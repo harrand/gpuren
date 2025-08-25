@@ -1,0 +1,747 @@
+vkinst : u64 mut;
+current_frame : u64 mut := 0;
+target_window : window mut;
+
+rgba_format ::= 37;
+depth_format ::= 126;
+
+frame_overlap ::= 2;
+frames : frame_data mut[2] mut;
+
+scratch : scratch_data mut;
+
+vallocator : vallocator_t mut;
+valloc_initial_size : u64 static := (32 * 1024 * 1024); // 32 mib
+valloc_t ::= struct
+{
+	device_mem : u64;
+	size : u64;
+	cursor : u64;
+	mapped_ptr : v0? mut;
+};
+
+vallocator_t ::= struct
+{
+	buffer_gpu : valloc_t;
+	image_gpu : valloc_t;
+	buffer_cpu : valloc_t;
+};
+
+scratch_data ::= struct
+{
+	cpool : u64;
+	cmds : u64;
+	fence : u64;
+};
+
+frame_data ::= struct
+{
+	cpool : u64;
+	cmds : u64;
+
+	swapchain_fence : u64;
+	swapchain_sem : u64;
+};
+
+static if(_config == "release")
+{
+	is_debug_utils_enabled ::= false;
+}
+else
+{
+	is_debug_utils_enabled ::= true;
+}
+
+gpu_appinfo ::= struct
+{
+	name : u8?;
+	ver_maj : u32;
+	ver_min : u32;
+};
+
+gpu_err ::= enum
+{
+	.none := 0;
+	.unknown := 1;
+};
+
+gpu_cull ::= enum
+{
+	.none := 0;
+	.back := 2;
+	.front := 1;
+	.both := 3;
+};
+
+gpu_draw_command ::= struct
+{
+	vertex_count : u32;
+	instance_count : u32;
+	first_vertex : u32;
+	first_instance : u32;
+};
+
+gpu_draw_indexed_command ::= struct
+{
+	index_count : u32;
+	instance_count : u32;
+	first_index : u32;
+	vertex_offset : s32;
+	first_instance : u32;
+};
+
+gpu_graphics_state ::= struct
+{
+	clear_colour : f32[4];
+	scissor : u32[4];
+	colour_targets_data : gpu_resource?;
+	colour_targets_count : u64;
+	depth_target : gpu_resource;
+	index_buffer : gpu_resource;
+	draw_buffer : gpu_resource;
+	culling : gpu_cull;
+	static_tri_count : u64;
+};
+
+gpu_compute_state ::= struct
+{
+	kernelx : u32;
+	kernely : u32;
+	kernelz : u32;
+};
+
+
+gpu_init ::= func(info : gpu_appinfo -> v0)
+{
+	GPU_VERSION ::= VK_MAKE_API_VERSION(0, 0, 1, 0);
+	vulkan_init();
+	target_window = window.invalid;
+
+	appinfo ::= VkApplicationInfo
+	{
+		.sType := 0;
+		.pNext := zero;
+		.pApplicationName := info.name;
+		.applicationVersion := VK_MAKE_API_VERSION(0, info.ver_maj, info.ver_min, 0);
+		.pEngineName := "gpu";
+		.engineVersion := GPU_VERSION;
+		.apiVersion := VK_MAKE_API_VERSION(0, 1, 3, 0);
+	};
+
+	extensions : u8? mut[3];
+	deref(extensions # 0) = "VK_KHR_surface";
+	static if(_win32)
+	{
+		deref(extensions # 1) = "VK_KHR_win32_surface";
+	}
+	static if(_linux)
+	{
+		deref(extensions # 1) = "VK_KHR_xlib_surface";
+	}
+	deref(extensions # 2) = "VK_EXT_debug_utils";
+	extension_count : u32 mut := __sizeof(extensions) / __sizeof(u8?);
+
+	layers : u8? mut[1];
+	deref(layers # 0) = "VK_LAYER_KHRONOS_validation";
+
+	static if(_config == "release")
+	{
+		layer_count ::= 0;
+		extension_count = (extension_count - 1);
+	}
+	else
+	{
+		layer_count ::= 1;
+		putzstr("validation layers enabled");
+		putchar(10);
+	}
+
+	create ::= VkInstanceCreateInfo
+	{
+		.sType := 1;
+		.pNext := zero;
+		.flags := 0;
+		.pApplicationInfo := ref appinfo;
+		.enabledLayerCount := layer_count@_;
+		.ppEnabledLayerNames := (layers # 0);
+		.enabledExtensionCount := extension_count;
+		.ppEnabledExtensionNames := (extensions # 0);
+	};
+
+	vk_check(vk.create_instance(ref create, zero, ref vkinst));
+	vulkan_load_functions(vkinst, is_debug_utils_enabled);
+};
+
+gpu_term ::= func( -> v0)
+{
+	vk.device_wait_idle(used_device);
+	if(pipeline_layout != 0)
+	{
+		vk.destroy_pipeline_layout(used_device, pipeline_layout, zero);
+		pipeline_layout = 0;
+	}
+	if(scratch.cpool != 0)
+	{
+		vk.destroy_command_pool(used_device, scratch.cpool, zero);
+		scratch.cpool = 0;
+	}
+	if(scratch.fence != 0)
+	{
+		vk.destroy_fence(used_device, scratch.fence, zero);
+	}
+	counter : u64 mut;
+	frame_ptr : frame_data mut? mut;
+	for(counter = 0, counter < frame_overlap, counter = counter + 1)
+	{
+		frame_ptr = (frames # counter);
+		if(frame_ptr->cpool != 0)
+		{
+			vk.destroy_command_pool(used_device, frame_ptr->cpool, zero);
+			(frame_ptr->cpool) = 0;
+		}
+		if(frame_ptr->swapchain_fence != 0)
+		{
+			vk.destroy_fence(used_device, frame_ptr->swapchain_fence, zero);
+			(frame_ptr->swapchain_fence) = 0;
+		}
+		if(frame_ptr->swapchain_sem != 0)
+		{
+			vk.destroy_semaphore(used_device, frame_ptr->swapchain_sem, zero);
+			(frame_ptr->swapchain_sem) = 0;
+		}
+
+		// dont forget descriptor layouts.
+		vk.destroy_descriptor_set_layout(used_device, deref(set_layouts # counter), zero);
+		deref(set_layouts # counter) = 0;
+	}
+	for(counter = 0, counter < (swapchain_image_count@_), counter = counter + 1)
+	{
+		vk.destroy_image_view(used_device, deref(swapchain_views # counter), zero);
+	}
+	if(swapchain != 0)
+	{
+		vk.destroy_swapchain_khr(used_device, swapchain, zero);
+	}
+
+	if(system_image_view != 0)
+	{
+		vk.destroy_image_view(used_device, system_image_view, zero);
+		system_image_view = 0;
+	}
+	if(system_image != 0)
+	{
+		vk.destroy_image(used_device, system_image, zero);
+		system_image = 0;
+	}
+
+	if(system_depth_image_view != 0)
+	{
+		vk.destroy_image_view(used_device, system_depth_image_view, zero);
+		system_depth_image_view = 0;
+	}
+	if(system_depth_image != 0)
+	{
+		vk.destroy_image(used_device, system_depth_image, zero);
+		system_depth_image = 0;
+	}
+
+	// destroy all passes
+	passptr : pass_data_t mut? mut;
+	for(counter = 0, counter < passes_count, counter = counter + 1)
+	{
+		passptr = passes # counter;	
+		vk.destroy_buffer(used_device, passptr->metabuf, zero);
+		vk.destroy_pipeline(used_device, passptr->pipeline, zero);
+	}
+	passes_count = 0;
+
+	// destroy all resources.
+	resptr : resource_data_t mut? mut;
+	for(counter = 0, counter < resource_count, counter = counter + 1)
+	{
+		resptr = resources # counter;	
+		if(resptr->is_buffer)
+		{
+			vk.destroy_buffer(used_device, resptr->vk_handle, zero);
+			(resptr->vk_handle) = 0;
+		}
+		if(!(resptr->is_buffer))
+		{
+			vk.destroy_sampler(used_device, resptr->sampler, zero);
+			vk.destroy_image_view(used_device, resptr->image_view, zero);
+			vk.destroy_image(used_device, resptr->vk_handle, zero);
+			(resptr->vk_handle) = 0;
+		}
+	}
+	resource_count = 0;
+
+	for(counter = 0, counter < descriptor_pools_count, counter = counter + 1)
+	{
+		vk.destroy_descriptor_pool(used_device, deref(descriptor_pools_data # counter), zero);
+	}
+	descriptor_pools_count = 0;
+
+	// destroy all shaders.
+	shad : shader_data_t mut? mut;
+	for(counter = 0, counter < shaders_count, counter = counter + 1)
+	{
+		shad = shaders # counter;	
+		if(shad->vertex_module != 0)
+		{
+			vk.destroy_shader_module(used_device, shad->vertex_module, zero);
+			shad->vertex_module = 0;
+		}
+		if(shad->fragment_module != 0)
+		{
+			vk.destroy_shader_module(used_device, shad->fragment_module, zero);
+			shad->fragment_module = 0;
+		}
+		if(shad->compute_module != 0)
+		{
+			vk.destroy_shader_module(used_device, shad->compute_module, zero);
+			shad->compute_module = 0;
+		}
+	}
+	shaders_count = 0;
+
+	impl_vallocator_free_all();
+
+	vk.destroy_device(used_device, zero);
+	if(surface != 0)
+	{
+		vk.destroy_surface_khr(vkinst, surface, zero);
+	}
+	vk.destroy_instance(vkinst, zero);
+	vulkan_term();
+};
+
+impl_vallocator_initial_setup ::= func( -> v0)
+{
+	bda_flags ::= VkMemoryAllocateFlagsInfo
+	{
+		.sType := 1000060000;
+		.pNext := zero;
+		.flags := 0x00000002;
+		.deviceMask := 0;
+	};
+	gpucreate ::= VkMemoryAllocateInfo
+	{
+		.sType := 5;
+		.pNext := (ref bda_flags)@_;
+		.allocationSize := valloc_initial_size;
+		.memoryTypeIndex := used_mti_gpu;
+	};
+	cpucreate ::= VkMemoryAllocateInfo
+	{
+		.sType := 5;
+		.pNext := (ref bda_flags)@_;
+		.allocationSize := valloc_initial_size;
+		.memoryTypeIndex := used_mti_cpu;
+	};
+
+	// create initial allocations for each case (buffer gpu, image gpu, buffer cpu).
+	bgpu ::= ref(vallocator.buffer_gpu);
+	vk_check(vk.allocate_memory(used_device, ref gpucreate, zero, ref (bgpu->device_mem)));
+	bgpu->size = valloc_initial_size;
+	bgpu->cursor = 0;
+	igpu ::= ref(vallocator.image_gpu);
+	vk_check(vk.allocate_memory(used_device, ref gpucreate, zero, ref (igpu->device_mem)));
+	igpu->size = valloc_initial_size;
+	igpu->cursor = 0;
+
+	bcpu ::= ref(vallocator.buffer_cpu);
+	vk_check(vk.allocate_memory(used_device, ref cpucreate, zero, ref (bcpu->device_mem)));
+	vk_check(vk.map_memory(used_device, bcpu->device_mem, 0, valloc_initial_size, 0, ref (bcpu->mapped_ptr)));
+	
+	bcpu->size = valloc_initial_size;
+	bcpu->cursor = 0;
+};
+
+
+impl_vallocator_free_all ::= func( -> v0)
+{
+	bgpu ::= vallocator.buffer_gpu;
+	vk.free_memory(used_device, bgpu.device_mem, zero);
+	igpu ::= vallocator.image_gpu;
+	vk.free_memory(used_device, igpu.device_mem, zero);
+
+	bcpu ::= vallocator.buffer_cpu;
+	vk.free_memory(used_device, bcpu.device_mem, zero);
+};
+
+
+impl_bind_image_mem ::= func(image : u64 -> v0)
+{
+	valloc : valloc_t mut? mut := ref (vallocator.image_gpu);
+
+	memreqs : VkMemoryRequirements mut;
+	vk.get_image_memory_requirements(used_device, image, ref memreqs);
+
+	imgsize ::= memreqs.size;
+	if((valloc->cursor + imgsize) > (valloc->size))
+	{
+		putzstr("allocation too large. requested ");
+		putuint(valloc->cursor + imgsize);
+		putzstr("B but there was only ");
+		putuint(valloc->size);
+		putzstr("B remaining.");
+		__debugbreak();
+	}
+
+	padding ::= ((memreqs.align) - ((valloc->cursor) % (memreqs.align)) % (memreqs.align));
+	(valloc->cursor) = (valloc->cursor) + (padding);
+
+	ret ::= vk.bind_image_memory(used_device, image, valloc->device_mem, valloc->cursor);
+	if(ret == -1) // out of host memory 
+	{
+		putzstr("oom when binding image memory. todo: multiple allocations");
+		__debugbreak();
+	}
+	if(ret == -2) // out of device memory 
+	{
+		putzstr("voom when binding image memory. todo: multiple allocations");
+		__debugbreak();
+	}
+	// todo: align safely.
+	valloc->cursor = (valloc->cursor) + imgsize;
+};
+
+impl_bind_buffer_mem ::= func(buffer : u64, bufsize : u64, gpu_memory : bool -> u64)
+{
+	valloc : valloc_t mut? mut := ref (vallocator.buffer_cpu);
+	if(gpu_memory)
+	{
+		valloc = ref (vallocator.buffer_gpu);
+	}
+	if((valloc->cursor + bufsize) > (valloc->size))
+	{
+		putzstr("allocation too large. requested ");
+		putuint(valloc->cursor + bufsize);
+		putzstr("B but there was only ");
+		putuint(valloc->size);
+		putzstr("B remaining.");
+		__debugbreak();
+	}
+
+	memreqs : VkMemoryRequirements mut;
+	vk.get_buffer_memory_requirements(used_device, buffer, ref memreqs);
+	padding ::= ((memreqs.align) - ((valloc->cursor) % (memreqs.align)) % (memreqs.align));
+	(valloc->cursor) = (valloc->cursor) + (padding);
+	offset_from_zero ::= valloc->cursor;
+
+	ret ::= vk.bind_buffer_memory(used_device, buffer, valloc->device_mem, valloc->cursor);
+	if(ret == -1) // out of host memory 
+	{
+		putzstr("oom when binding buffer memory. todo: multiple allocations");
+		__debugbreak();
+	}
+	if(ret == -2) // out of device memory 
+	{
+		putzstr("voom when binding buffer memory. todo: multiple allocations");
+		__debugbreak();
+	}
+	(valloc->cursor) = (valloc->cursor) + bufsize;
+	return offset_from_zero;
+};
+
+impl_create_graphics_pipeline ::= func(shader : gpu_shader, graphics : gpu_graphics_state, a : arena mut? -> u64)
+{
+	shadptr ::= (shaders # (shader@s64));
+	vertex_shader_module ::= shadptr->vertex_module;
+	if(vertex_shader_module == 0)
+	{
+		putzstr("invalid vertex shader");
+		__debugbreak();
+	}
+	fragment_shader_module ::= shadptr->fragment_module;
+	if(fragment_shader_module == 0)
+	{
+		putzstr("invalid fragment shader");
+		__debugbreak();
+	}
+
+	shader_creates : VkPipelineShaderStageCreateInfo mut[2];
+	deref(shader_creates # 0) = VkPipelineShaderStageCreateInfo
+	{
+		.sType := 18;
+		.pNext := zero;
+		.flags := 0;
+		.stage := 0x00000001;
+		.module := vertex_shader_module;
+		.pName := "main";
+		.pSpecializationInfo := zero;
+
+	};
+	deref(shader_creates # 1) = VkPipelineShaderStageCreateInfo
+	{
+		.sType := 18;
+		.pNext := zero;
+		.flags := 0;
+		.stage := 0x00000010;
+		.module := fragment_shader_module;
+		.pName := "main";
+		.pSpecializationInfo := zero;
+	};
+
+	vtx ::= VkPipelineVertexInputStateCreateInfo
+	{
+		.sType := 19;
+		.pNext := zero;
+		.flags := 0;
+		.vertexBindingDescriptionCount := 0;
+		.pVertexBindingDescriptions := zero;
+		.vertexAttributeDescriptionCount := 0;
+		.pVertexAttributeDescriptions := zero;
+	};
+
+	iasm ::= VkPipelineInputAssemblyStateCreateInfo
+	{
+		.sType := 20;
+		.pNext := zero;
+		.flags := 0;
+		.topology := 3;
+		.primitiveRestartEnable := 0;
+	};
+
+	tess ::= VkPipelineTessellationStateCreateInfo
+	{
+		.sType := 21;
+		.pNext := zero;
+		.flags := 0;
+		.patchControlPoints := 3;
+	};
+
+	vwprt ::= VkPipelineViewportStateCreateInfo
+	{
+		.sType := 22;
+		.pNext := zero;
+		.flags := 0;
+		.viewportCount := 1;
+		//remember: this is dynamic state so we pass zeros even though there will be a viewport and scissor.
+		.pViewports := zero;
+		.scissorCount := 1;
+		.pScissors := zero;
+	};
+
+	cull_bits : s32 mut;
+	if(graphics.culling == (gpu_cull.both))
+	{
+		cull_bits = 3;
+	}
+	if(graphics.culling == (gpu_cull.front))
+	{
+		cull_bits = 1;
+	}
+	if(graphics.culling == (gpu_cull.back))
+	{
+		cull_bits = 2;
+	}
+	if(graphics.culling == (gpu_cull.none))
+	{
+		cull_bits = 0;
+	}
+
+	raster ::= VkPipelineRasterizationStateCreateInfo
+	{
+		.sType := 23;
+		.pNext := zero;
+		.flags := 0;
+		.depthClampEnable := 0;
+		.rasterizerDiscardEnable := 0;
+		.polygonMode := 0;
+		.cullMode := cull_bits;
+		.frontFace := 0;
+		.depthBiasEnable := 0;
+		.depthBiasConstantFactor := 0.0;
+		.depthBiasClamp := 0.0;
+		.depthBiasSlopeFactor := 0.0;
+		.lineWidth := 1.0;
+	};
+
+	multi ::= VkPipelineMultisampleStateCreateInfo
+	{
+		.sType := 24;
+		.pNext := zero;
+		.flags := 0;
+		.rasterizationSamples := 1;
+		.sampleShadingEnable := 0;
+		.minSampleShading := 1.0;
+		.pSampleMask := zero;
+		.alphaToCoverageEnable := 0;
+		.alphaToOneEnable := 0;
+	};
+
+	depth_stencil ::= VkPipelineDepthStencilStateCreateInfo
+	{
+		.sType := 25;
+		.pNext := zero;
+		.flags := 0;
+		.depthTestEnable := (graphics.depth_target != (gpu_resource.invalid))@_;
+		.depthWriteEnable := (graphics.depth_target != (gpu_resource.invalid))@_;
+		.depthCompareOp := 1;
+		.depthBoundsTestEnable := 0;
+		.stencilTestEnable := 0;
+		.front := zero;
+		.back := zero;
+		.minDepthBounds := 0.0;
+		.maxDepthBounds := 1.0;
+	};
+
+	counter : u64 mut;
+	blend_states : VkPipelineColorBlendAttachmentState mut? := arena_alloc(a, __sizeof(VkPipelineColorBlendAttachmentState) * (graphics.colour_targets_count));
+	for(counter = 0, counter < (graphics.colour_targets_count), counter = counter + 1)
+	{
+		deref(blend_states # counter) = VkPipelineColorBlendAttachmentState
+		{
+			.blendEnable := 0;
+			.srcColorBlendFactor := 1;
+			.dstColorBlendFactor := 0;
+			.colorBlendOp := 0;
+			.srcAlphaBlendFactor := 1;
+			.dstAlphaBlendFactor := 0;
+			.alphaBlendOp := 0;
+			.colorWriteMask := (0x00000001 | 0x00000002 | 0x00000004 | 0x00000008);
+		};
+	}
+
+	blend ::= VkPipelineColorBlendStateCreateInfo
+	{
+		.sType := 26;
+		.pNext := zero;
+		.flags := 0;
+		.logicOpEnable := 0;
+		.logicOp := 0;
+		.attachmentCount := (graphics.colour_targets_count)@_;
+		.pAttachments := blend_states # 0;
+	};
+	deref((blend.blendConstants) # 0) = 0.0;
+	deref((blend.blendConstants) # 1) = 0.0;
+	deref((blend.blendConstants) # 2) = 0.0;
+	deref((blend.blendConstants) # 3) = 0.0;
+
+	color_formats : s32 mut? := arena_alloc(a, __sizeof(s32) * (graphics.colour_targets_count));
+	for(counter = 0, counter < (graphics.colour_targets_count), counter = counter + 1)
+	{
+		deref(color_formats # counter) = rgba_format;
+	}
+	counter = 0;
+
+	rendering ::= VkPipelineRenderingCreateInfo
+	{
+		.sType := 1000044002;
+		.pNext := zero;
+		.viewMask := 0;
+		.colorAttachmentCount := (graphics.colour_targets_count)@_;
+		.pColorAttachmentFormats := color_formats;
+		.depthAttachmentFormat := 126;
+		.stencilAttachmentFormat := 0;
+	};
+
+	dynamic_states : s32 mut[2];
+	deref(dynamic_states # 0) = 0; // VK_DYNAMIC_STATE_VIEWPORT
+	deref(dynamic_states # 1) = 1; // VK_DYNAMIC_STATE_SCISSOR
+
+	dyn ::= VkPipelineDynamicStateCreateInfo
+	{
+		.sType := 27;
+		.pNext := zero;
+		.flags := 0;
+		.dynamicStateCount := (__sizeof(dynamic_states) / __sizeof(deref(dynamic_states # 0)));
+		.pDynamicStates := dynamic_states # 0;
+	};
+
+	create ::= VkGraphicsPipelineCreateInfo
+	{
+		.sType := 28;
+		.pNext := (ref rendering)@_;
+		.flags := 0;
+		.stageCount := 2;
+		.pStages := shader_creates # 0;
+		.pVertexInputState := ref vtx;
+		.pInputAssemblyState := ref iasm;
+		.pTessellationState := ref tess;
+		.pViewportState := ref vwprt;
+		.pRasterizationState := ref raster;
+		.pMultisampleState := ref multi;
+		.pDepthStencilState := ref depth_stencil;
+		.pColorBlendState := ref blend;
+		.pDynamicState := ref dyn;
+		.layout := pipeline_layout;
+		.renderPass := 0;
+		.subpass := 0;
+		.basePipelineHandle := 0;
+		.basePipelineIndex := -1;
+	};
+
+	ret : u64 mut;
+	vk_check(vk.create_graphics_pipelines(used_device, 0, 1, ref create, zero, ref ret));
+	return ret;
+};
+
+impl_create_compute_pipeline ::= func(shader : gpu_shader, compute : gpu_compute_state -> u64)
+{
+	shadptr ::= (shaders # (shader@s64));
+	compute_shader_module ::= shadptr->compute_module;
+	if(compute_shader_module == 0)
+	{
+		putzstr("invalid compute shader");
+		__debugbreak();
+	}
+	create ::= VkComputePipelineCreateInfo
+	{
+		.sType := 29;
+		.pNext := zero;
+		.flags := 0;
+		.stage := VkPipelineShaderStageCreateInfo
+		{
+			.sType := 18;
+			.pNext := zero;
+			.flags := 0;
+			.stage := 0x00000020; 
+			.module := compute_shader_module;
+			.pName := "main";
+			.pSpecializationInfo := zero;
+		};
+		.layout := pipeline_layout;
+		.basePipelineHandle := 0;
+		.basePipelineIndex := -1;
+	};
+	ret : u64 mut;
+
+	vk_check(vk.create_compute_pipelines(used_device, 0, 1, ref create, zero, ref ret));
+	return ret;
+};
+
+impl_begin_scratch_commands ::= func( -> v0)
+{
+	create ::= VkCommandBufferBeginInfo
+	{
+		.sType := 42;
+		.pNext := zero;
+		.flags := 0x00000001; //VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+		.pInheritanceInfo := zero;
+	};
+
+	vk_check(vk.begin_command_buffer(scratch.cmds, ref create));
+};
+
+impl_end_and_execute_scratch_commands ::= func( -> v0)
+{
+	vk_check(vk.end_command_buffer(scratch.cmds));
+	submit ::= VkSubmitInfo
+	{
+		.sType := 4;
+		.pNext := zero;
+		.waitSemaphoreCount := 0;
+		.pWaitSemaphores := zero;
+		.pWaitDstStageMask := zero;
+		.commandBufferCount := 1;
+		.pCommandBuffers := ref (scratch.cmds);
+		.signalSemaphoreCount := 0;
+		.pSignalSemaphores := zero;
+	};
+	vk_check(vk.queue_submit(graphics_queue, 1, ref submit, scratch.fence));
+	vk_check(vk.wait_for_fences(used_device, 1, ref (scratch.fence), 1, -1@u64));
+	vk_check(vk.reset_fences(used_device, 1, ref (scratch.fence)));
+};
+

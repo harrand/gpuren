@@ -1,0 +1,123 @@
+shaders : shader_data_t mut? mut;
+shaders_count : u64 mut := 0;
+shaders_cap : u64 mut := 0;
+
+shader_data_t ::= struct
+{
+	is_graphics : bool;
+	vertex_module : u64;
+	fragment_module : u64;
+	compute_module : u64;
+};
+
+gpu_shader_sources ::= struct
+{
+	vertex_spv_data : u8 mut?;
+	vertex_spv_count : u64;
+	fragment_spv_data : u8 mut?;
+	fragment_spv_count : u64;
+};
+
+gpu_shader ::= enum
+{
+	.invalid := -1;
+};
+
+gpu_load_shader_files ::= func(vertex_spv_path : u8?, fragment_spv_path : u8?, a : arena mut? -> gpu_shader_sources)
+{
+	ret : gpu_shader_sources mut;
+	if(!file_exists(vertex_spv_path))
+	{
+		putzstr("missing vertex spv");
+		__debugbreak();
+	}
+	if(!file_exists(fragment_spv_path))
+	{
+		putzstr("missing fragment spv");
+		__debugbreak();
+	}
+	ret.vertex_spv_count = file_size_bytes(vertex_spv_path);
+	ret.fragment_spv_count = file_size_bytes(fragment_spv_path);
+
+	ret.vertex_spv_data = arena_alloc(a, ret.vertex_spv_count);
+	ret.fragment_spv_data = arena_alloc(a, ret.fragment_spv_count);
+
+	file_read(vertex_spv_path, ret.vertex_spv_data, ret.vertex_spv_count);
+	file_read(fragment_spv_path, ret.fragment_spv_data, ret.fragment_spv_count);
+
+	return ret;
+};
+
+gpu_create_graphics_shader ::= func(vertex_source : u8?, vertex_source_len : u64, fragment_source : u8?, fragment_source_len : u64, a : arena mut? -> gpu_shader)
+{
+	retid ::= shaders_count;
+	resptr ::= impl_alloc_new_shader(a);
+	resptr->is_graphics = true;
+	resptr->compute_module = 0;
+
+	vcreate ::= VkShaderModuleCreateInfo
+	{
+		.sType := 16;
+		.pNext := zero;
+		.flags := 0;
+		.codeSize := vertex_source_len@_;
+		.pCode := vertex_source@_;
+	};
+	vk.create_shader_module(used_device, ref vcreate, zero, ref (resptr->vertex_module));
+	fcreate ::= VkShaderModuleCreateInfo
+	{
+		.sType := 16;
+		.pNext := zero;
+		.flags := 0;
+		.codeSize := fragment_source_len@_;
+		.pCode := fragment_source@_;
+	};
+	vk.create_shader_module(used_device, ref fcreate, zero, ref (resptr->fragment_module));
+
+	return retid@gpu_shader;
+};
+
+gpu_create_compute_shader ::= func(compute_source : u8?, compute_source_len : u64, a : arena mut? -> gpu_shader)
+{
+	retid ::= shaders_count;
+	resptr ::= impl_alloc_new_shader(a);
+	resptr->is_graphics = false;
+	resptr->vertex_module = 0;
+	resptr->fragment_module = 0;
+
+	vcreate ::= VkShaderModuleCreateInfo
+	{
+		.sType := 16;
+		.pNext := zero;
+		.flags := 0;
+		.codeSize := compute_source_len@_;
+		.pCode := compute_source@_;
+	};
+	vk.create_shader_module(used_device, ref vcreate, zero, ref (resptr->compute_module));
+
+	return retid@gpu_shader;
+};
+
+impl_shader_is_compute ::= func(shader : gpu_shader -> bool)
+{
+	shadptr ::= (shaders # (shader@s64));
+	return (shadptr->compute_module) != 0;
+};
+
+impl_alloc_new_shader ::= func(a : arena mut? -> shader_data_t mut?)
+{
+	if(shaders_cap == 0)
+	{
+		shaders = arena_alloc(a, __sizeof(shader_data_t) * 32);
+		shaders_cap = 32;
+	}
+	if(shaders_count > shaders_cap)
+	{
+		putzstr("ran out of shader capacity. todo: fix this.");
+		__debugbreak();
+	}
+	id ::= shaders_count;
+	shaders_count = shaders_count + 1;
+	return shaders # id;
+};
+

@@ -1,0 +1,557 @@
+gpu_buffer_flag ::= enum
+{
+	.none := 0b0000;
+	.dynamic := 0b0001;
+	.index_buffer := 0b0010;
+	.draw_buffer := 0b0100;
+};
+
+gpu_image_flag ::= enum
+{
+	.none := 0;
+};
+
+gpu_resource_flag ::= enum
+{ 
+	// ignore gpu_resource_info.data, fill size with zeroes.
+	.zero_memory := 0b00000001;
+};
+
+gpu_image_type ::= enum
+{
+	.rgba := 0;
+	.depth := 1;
+};
+
+gpu_resource_info ::= struct
+{
+	data : v0? weak;
+	data_size : u64;
+	image_dimensions : u32[2];
+	image_type : gpu_image_type;
+	flags : gpu_resource_flag;
+	buffer_flags : gpu_buffer_flag;
+	image_flags : gpu_image_flag;
+	name : u8?;
+};
+
+gpu_resource ::= enum
+{
+	.invalid := -1;
+	.window_resource := -2;
+};
+
+resource_data_t ::= struct
+{
+	info : gpu_resource_info;
+	is_buffer : bool;
+	vk_handle : u64;
+	image_view : u64;
+	sampler : u64;
+	buffer_device_address : u64;
+	mapped_ptr : v0 mut? weak;
+
+};
+resources : resource_data_t mut? mut;
+resource_count : u64 mut := 0;
+resource_cap : u64 mut := 0;
+
+gpu_create_buffer ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource)
+{
+	retid ::= resource_count;
+	resptr ::= impl_alloc_new_resource(a);
+	impl_init_buffer(resptr, info, a);
+	return retid@gpu_resource;
+};
+
+gpu_create_image ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource)
+{
+	retid ::= resource_count;
+	resptr ::= impl_alloc_new_resource(a);
+	impl_init_image(resptr, info, a);
+	return retid@gpu_resource;
+};
+
+
+gpu_resource_write ::= func(res : gpu_resource, data : v0? weak, data_size : u64, offset : u64 -> v0)
+{
+	resptr ::= (resources # (res@s64));
+	rinfo ::= ref (resptr->info);
+
+	memcopy(rinfo->data, data, data_size);
+	impl_write_a_resource(resptr, data_size, offset);
+};
+
+gpu_resource_read ::= func(res : gpu_resource, buf : v0? weak, len : u64, offset : u64 -> v0)
+{
+	if(gpu_resource_size(res) <= (offset + len))
+	{
+		putzstr("resource read out of range");
+		__debugbreak();
+	}
+	resptr ::= resources # (res@s64);
+	rinfo ::= resptr->info;
+	is_dynamic_buffer ::= (((rinfo.buffer_flags) & (gpu_buffer_flag.dynamic)) != zero) && resptr->is_buffer;
+	if(is_dynamic_buffer)
+	{
+		mapped_ptr ::= (resptr->mapped_ptr)@u8 mut?;
+		memcopy(buf, mapped_ptr # offset, len);
+	}
+	else
+	{
+		ptr ::= (rinfo.data)@u8 mut?;
+		memcopy(buf, ptr # offset, len);
+	}
+};
+
+gpu_resource_size ::= func(res : gpu_resource -> u64)
+{
+	resptr ::= resources # (res@s64);
+	rinfo ::= resptr->info;
+	return rinfo.data_size;
+};
+
+gpu_resource_mapping ::= func(res : gpu_resource -> u8 mut?)
+{
+	resptr ::= resources # (res@s64);
+	rinfo ::= resptr->info;
+	is_dynamic_buffer ::= (((rinfo.buffer_flags) & (gpu_buffer_flag.dynamic)) != zero) && resptr->is_buffer;
+	if(!is_dynamic_buffer)
+	{
+		putzstr("gpu_resource_mapping only callable on dynamic buffers");
+		__debugbreak();
+	}
+	return resptr->mapped_ptr@_;
+};
+
+gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena mut?, short : arena mut? -> v0)
+{
+	resptr ::= resources # (res@s64);
+	oldinfo ::= resptr->info;
+	olddata ::= oldinfo.data;
+	olddatasize ::= oldinfo.data_size;
+	if(olddatasize == new_size)
+	{
+		return;
+	}
+
+	vk.device_wait_idle(used_device);
+	vk.destroy_buffer(used_device, resptr->vk_handle, zero);
+
+	if(new_size > olddatasize)
+	{
+		// ok a bit of trouble. old data is too small. need to realloc to be large enough.
+		oldinfo.data = arena_alloc(long, new_size);
+		oldinfo.data_size = new_size;
+
+		// preserve old data
+		memcopy(oldinfo.data, olddata, olddatasize);
+		// fill the rest with zeros.
+		offset_ptr ::= (oldinfo.data)@u8 mut? mut;
+		offset_ptr = offset_ptr # olddatasize;
+		memfill(offset_ptr, 0, new_size - olddatasize);
+	}
+
+	impl_init_buffer(resptr, oldinfo, long);
+
+	// problem is, all the passes that use this buffer as a resource will need to have their metabuffer written to.
+	// this is because the metabuffer will contain the BDA of the old buffer which is now out of date.
+	// solution:
+	// for all passes, if they contained this buffer, rewrite their metabuffers.
+	counter : u64 mut;
+	for(counter = 0, counter < passes_count, counter = counter + 1)
+	{
+		if(impl_pass_uses_resource(counter@s64@gpu_pass, res))
+		{
+			impl_write_resources(passes # counter, long, short);
+		}
+	}
+};
+
+impl_cpu_gpu_transfer ::= func(dst_gpu_res : u64, dst_gpu_is_buffer : bool, src_data : u8? weak, src_data_size : u64, image_dimensions : u32[2], dst_offset : u64 -> v0)
+{
+	vk.device_wait_idle(used_device);
+	impl_begin_scratch_commands();
+	staging_create ::= VkBufferCreateInfo
+	{
+		.sType := 12;
+		.pNext := zero;
+		.flags := 0;
+		.size := src_data_size;
+		.usage := 0x00000001; //VK_BUFFER_USAGE_TRANSFER_SRC_BIT
+		.sharingMode := 0;
+		.queueFamilyIndexCount := 1;
+		.pQueueFamilyIndices := ref used_qfi;
+	};
+	staging : u64 mut;
+	vk.create_buffer(used_device, ref staging_create, zero, ref staging);
+	// todo: write to the buffer using map memory.
+	old_cpumem ::= vallocator.buffer_cpu;
+	cursor ::= impl_bind_buffer_mem(staging, src_data_size, false);
+	cpumem ::= vallocator.buffer_cpu;
+	mapped_ptr ::= (cpumem.mapped_ptr)@u8 mut?;
+	memcopy(mapped_ptr # cursor, src_data, src_data_size);
+
+	aspect_mask : s32 := 1; // todo: suport depth.
+
+	if(dst_gpu_is_buffer)
+	{
+		bufcpy ::= VkBufferCopy
+		{
+			.srcOffset := 0;
+			.dstOffset := dst_offset@_;
+			.size := src_data_size;
+		};
+		vk.cmd_copy_buffer(scratch.cmds, staging, dst_gpu_res, 1, ref bufcpy);
+	}
+	if(!dst_gpu_is_buffer)
+	{
+		imgcpy ::= VkBufferImageCopy
+		{
+			.bufferOffset := 0;
+			.bufferRowLength := 0;
+			.bufferImageHeight := 0;
+			.imageSubresource := VkImageSubresourceLayers
+			{
+				.aspectMask := aspect_mask; // todo: do depth if the image is a depth image.
+				.mipLevel := 0;
+				.baseArrayLayer := 0;
+				.layerCount := 1;
+			};
+			.imageOffset := VkOffset3D{.x := 0; .y := 0; .z := 0;};
+			.imageExtent := VkExtent3D{.width := deref(image_dimensions # 0); .height := deref(image_dimensions # 1); .depth := 1;};
+		};
+		barrier ::= VkImageMemoryBarrier
+		{
+			.sType := 45;
+			.pNext := zero;
+			.srcAccessMask := 0;
+			.dstAccessMask := 0x00001000;//VK_ACCESS_TRANSFER_WRITE_BIT
+			.oldLayout := 0;
+			.newLayout := 7; // VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+			.srcQueueFamilyIndex := ~0;
+			.dstQueueFamilyIndex := ~0;
+			.image := dst_gpu_res;
+			.subresourceRange := VkImageSubresourceRange
+			{
+				.aspectMask := aspect_mask;
+				.baseMipLevel := 0;
+				.levelCount := 1;
+				.baseArrayLayer := 0;
+				.layerCount := 1;
+			};
+		};
+		vk.cmd_pipeline_barrier(scratch.cmds, 0, 0x00001000, 0, 0, zero, 0, zero, 1, ref barrier);
+		vk.cmd_copy_buffer_to_image(scratch.cmds, staging, dst_gpu_res, 7, 1, ref imgcpy);
+	}
+
+	impl_end_and_execute_scratch_commands();
+	vk.destroy_buffer(used_device, staging, zero);
+};
+
+impl_write_a_resource ::= func(resptr : resource_data_t?, size : u64, offset : u64 -> v0)
+{
+	rinfo ::= resptr->info;
+	is_dynamic_buffer ::= (((rinfo.buffer_flags) & (gpu_buffer_flag.dynamic)) != zero) && resptr->is_buffer;
+	if(is_dynamic_buffer)
+	{
+		mapped_ptr ::= (resptr->mapped_ptr)@u8 mut?;
+		memcopy(mapped_ptr#offset, rinfo.data, size);
+	}
+	if(!is_dynamic_buffer)
+	{
+		impl_cpu_gpu_transfer(resptr->vk_handle, resptr->is_buffer, rinfo.data, size, rinfo.image_dimensions, offset);
+	}
+};
+
+impl_write_resources ::= func(passptr : pass_data_t mut?, long : arena mut?, short : arena mut? -> v0)
+{
+	pinfo ::= passptr->info;
+	if((pinfo.resources_count) == 0)
+	{
+		return;
+	}
+
+	buffer_addresses : u64 mut? := arena_alloc(short, passptr->metabuf_size);
+	bufcount : u64 mut := 0;
+
+	i : u64 mut := 0;
+	curres : gpu_resource mut;
+	resdata : resource_data_t mut;
+	for(i = 0, i < (pinfo.resources_count), i = i + 1)
+	{
+		curres = deref((pinfo.resources_data) # i);
+		if(curres != (gpu_resource.invalid))
+		{
+			if(curres != (gpu_resource.window_resource))
+			{
+				resdata = deref (resources # (curres@s64));
+				if(resdata.is_buffer)
+				{
+					defer bufcount = bufcount + 1;
+					deref(buffer_addresses # bufcount) = (resdata.buffer_device_address);
+				}
+				else
+				{
+					// todo: resource write image data to resdata.vk_handle.
+					resinfo ::= resdata.info;
+					impl_cpu_gpu_transfer(resdata.vk_handle, false, resdata.info.data, resdata.info.data_size, resdata.info.image_dimensions, 0);
+				}
+			}
+		}
+	}
+
+	if(bufcount != ((passptr->metabuf_size) / __sizeof(u64)))
+	{
+		putzstr("internal metabuf logic error");
+		__debugbreak();
+	}
+
+	// write to metabuffer.
+	if(bufcount > 0)
+	{
+		impl_cpu_gpu_transfer(passptr->metabuf, true, buffer_addresses, passptr->metabuf_size, zero, 0);
+	}
+};
+
+impl_init_buffer ::= func(resptr : resource_data_t mut?, info : gpu_resource_info, a : arena mut? -> v0)
+{
+	resptr->info = info;
+	resptr->is_buffer = true;
+	create : VkBufferCreateInfo mut := VkBufferCreateInfo
+	{
+		.sType := 12;
+		.pNext := zero;
+		.flags := 0;
+		.size := info.data_size;
+		.usage := (0x00000020 | 0x00020000);
+		.sharingMode := 0;
+		.queueFamilyIndexCount := 1;
+		.pQueueFamilyIndices := ref used_qfi;
+	};
+	dynamic ::= ((info.buffer_flags) & (gpu_buffer_flag.dynamic)) != zero;
+	if(!dynamic)
+	{
+		create.usage = (create.usage) | 0x00000002;
+	}
+	if(((info.buffer_flags) & (gpu_buffer_flag.index_buffer)) != zero)
+	{
+		create.usage = (create.usage) | 0x00000040;
+	}
+	if(((info.buffer_flags) & (gpu_buffer_flag.draw_buffer)) != zero)
+	{
+		create.usage = (create.usage) | 0x00000100;
+	}
+	vk_check(vk.create_buffer(used_device, ref create, zero, ref (resptr->vk_handle)));
+	bda ::= VkBufferDeviceAddressInfo
+	{
+		.sType := 1000244001;
+		.pNext := zero;
+		.buffer := resptr->vk_handle;
+	};
+	cursor ::= impl_bind_buffer_mem(resptr->vk_handle, info.data_size, !dynamic);
+	if(dynamic)
+	{
+		cpumem ::= vallocator.buffer_cpu;
+		mapped_ptr ::= (cpumem.mapped_ptr)@u8 mut?;
+		(resptr->mapped_ptr) = (mapped_ptr # cursor)@_;
+	}
+	tmp_bda ::= vk.get_buffer_device_address(used_device, ref bda);
+	(resptr->buffer_device_address) = tmp_bda;
+
+	// make a copy of the resource data using the arena.
+	resinfo ::= ref(resptr->info);
+	resinfo->data = arena_alloc(a, info.data_size);
+	if(info.data != zero)
+	{
+		memcopy(resinfo->data, info.data, info.data_size);
+	}
+
+	if(((info.flags) & (gpu_resource_flag.zero_memory)) != zero)
+	{
+		memfill(resinfo->data, 0, info.data_size);
+	}
+
+	// write resource data to gpu memory.
+	impl_write_a_resource(resptr, info.data_size, 0);
+
+	// debug utils naming
+	if(info.name != zero)
+	{
+		if(is_debug_utils_enabled)
+		{
+			debug_name ::= VkDebugUtilsObjectNameInfoEXT
+			{
+				.sType := 1000128000;
+				.pNext := zero;
+				.objectType := VK_OBJECT_TYPE_BUFFER;
+				.objectHandle := resptr->vk_handle;
+				.pObjectName := info.name;
+			};
+			vk.set_debug_utils_object_name_ext(used_device, ref debug_name);
+		}
+	}
+};
+
+impl_init_image ::= func(resptr : resource_data_t mut?, info : gpu_resource_info, a : arena mut? -> v0)
+{
+	resptr->info = info;
+	resptr->is_buffer = false;
+	fmt : s32 mut;
+	aspect_mask : s32 mut;
+	if((info.image_type) == (gpu_image_type.rgba))
+	{
+		fmt = rgba_format;
+		aspect_mask = 0x00000001;
+	}
+	if((info.image_type) == (gpu_image_type.depth))
+	{
+		fmt = depth_format;
+		aspect_mask = 0x00000002;
+	}
+	dims ::= info.image_dimensions;
+	w ::= deref(dims # 0);
+	h ::= deref(dims # 1);
+	create : VkImageCreateInfo mut := VkImageCreateInfo
+	{
+		.sType := 14;
+		.pNext := zero;
+		.flags := 0;
+		.imageType := 1;
+		.format := fmt;
+		.extent := VkExtent3D
+		{
+			.width := w;
+			.height := h;
+			.depth := 1;
+		};
+		.mipLevels := 1;
+		.arrayLayers := 1;
+		.samples := 1;
+		.tiling := 0;
+		.usage := (0x00000004 | 0x00000002); // VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT 
+		.sharingMode := 0;
+		.queueFamilyIndexCount := 1;
+		.pQueueFamilyIndices := ref used_qfi;
+		.initialLayout := 0;
+	};
+	vk_check(vk.create_image(used_device, ref create, zero, ref (resptr->vk_handle)));
+	impl_bind_image_mem(resptr->vk_handle);
+
+	view_create ::= VkImageViewCreateInfo
+	{
+		.sType := 15;
+		.pNext := zero;
+		.flags := 0;
+		.image := resptr->vk_handle;
+		.viewType := 1;
+		.format := fmt;
+		.components := VkComponentMapping
+		{
+			.r := 0;
+			.g := 0;
+			.b := 0;
+			.a := 0;
+		};
+		.subresourceRange := VkImageSubresourceRange
+		{
+			.aspectMask := aspect_mask;
+			.baseMipLevel := 0;
+			.levelCount := 1;
+			.baseArrayLayer := 0;
+			.layerCount := 1;
+		};
+	};
+
+	vk_check(vk.create_image_view(used_device, ref view_create, zero, ref (resptr->image_view)));
+
+	sampler_create ::= VkSamplerCreateInfo
+	{
+		.sType := 31;
+		.pNext := zero;
+		.flags := 0;
+		.magFilter := 0;
+		.minFilter := 0;
+		.mipmapMode := 0;
+		.addressModeU := 2;
+		.addressModeV := 2;
+		.addressModeW := 2;
+		.mipLodBias := 0.0;
+		.anisotropyEnable := 0;
+		.maxAnisotropy := 0.0;
+		.compareEnable := 0;
+		.compareOp := 7;
+		.minLod := 0.0;
+		.maxLod := 0.0;
+		.borderColor := 3;
+		.unnormalizedCoordinates := 0;
+	};
+	vk_check(vk.create_sampler(used_device, ref sampler_create, zero, ref (resptr->sampler)));
+
+	// make a copy of the resource data using the arena.
+	resinfo ::= ref(resptr->info);
+	resinfo->data = arena_alloc(a, info.data_size);
+	if(info.data != zero)
+	{
+		memcopy(resinfo->data, info.data, info.data_size);
+	}
+
+	if(((info.flags) & (gpu_resource_flag.zero_memory)) != zero)
+	{
+		memfill(resinfo->data, 0, info.data_size);
+	}
+
+	// write resource data to gpu memory.
+	impl_write_a_resource(resptr, info.data_size, 0);
+
+	// debug utils naming
+	if(info.name != zero)
+	{
+		if(is_debug_utils_enabled)
+		{
+			debug_name ::= VkDebugUtilsObjectNameInfoEXT
+			{
+				.sType := 1000128000;
+				.pNext := zero;
+				.objectType := VK_OBJECT_TYPE_IMAGE;
+				.objectHandle := resptr->vk_handle;
+				.pObjectName := info.name;
+			};
+			vk.set_debug_utils_object_name_ext(used_device, ref debug_name);
+
+			view_prefix ::= "View: ";
+			prefixlen ::= zstrlen(view_prefix);
+			namelen ::= zstrlen(info.name);
+			view_debug_name_str : u8 mut? := arena_alloc(a, prefixlen + namelen);
+			memcopy(view_debug_name_str, view_prefix, prefixlen);
+			memcopy(view_debug_name_str # prefixlen, info.name, namelen);
+			view_debug_name ::= VkDebugUtilsObjectNameInfoEXT
+			{
+				.sType := 1000128000;
+				.pNext := zero;
+				.objectType := VK_OBJECT_TYPE_IMAGE_VIEW;
+				.objectHandle := resptr->image_view;
+				.pObjectName := view_debug_name_str;
+			};
+			vk.set_debug_utils_object_name_ext(used_device, ref view_debug_name);
+		}
+	}
+};
+
+impl_alloc_new_resource ::= func(a : arena mut? -> resource_data_t mut?)
+{
+	if(resource_cap == 0)
+	{
+		resources = arena_alloc(a, __sizeof(resource_data_t) * 1024);
+		resource_cap = 1024;
+	}
+	if(resource_count > resource_cap)
+	{
+		putzstr("ran out of resources. todo: fix this.");
+		__debugbreak();
+	}
+	id ::= resource_count;
+	resource_count = resource_count + 1;
+	return resources # id;
+};
+

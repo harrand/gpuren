@@ -1,0 +1,1448 @@
+gpu_cull ::= enum
+{
+	.none := 0;
+	.back := 2;
+	.front := 1;
+	.both := 3;
+};
+
+gpu_graphics_state ::= struct
+{
+	clear_colour : f32[4];
+	scissor : u32[4];
+	colour_targets_data : gpu_resource?;
+	colour_targets_count : u64;
+	depth_target : gpu_resource;
+	index_buffer : gpu_resource;
+	draw_buffer : gpu_resource;
+	culling : gpu_cull;
+	static_tri_count : u64;
+};
+
+gpu_compute_state ::= struct
+{
+	kernelx : u32;
+	kernely : u32;
+	kernelz : u32;
+};
+
+gpu_graph ::= enum
+{
+	.invalid := -1;
+};
+
+gpu_draw_command ::= struct
+{
+	vertex_count : u32;
+	instance_count : u32;
+	first_vertex : u32;
+	first_instance : u32;
+};
+
+gpu_draw_indexed_command ::= struct
+{
+	index_count : u32;
+	instance_count : u32;
+	first_index : u32;
+	vertex_offset : s32;
+	first_instance : u32;
+};
+gpu_create_buffer ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource)
+{
+	retid ::= resource_count;
+	resptr ::= impl_alloc_new_resource(a);
+	impl_init_buffer(resptr, info, a);
+	return retid@gpu_resource;
+};
+
+gpu_create_image ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource)
+{
+	retid ::= resource_count;
+	resptr ::= impl_alloc_new_resource(a);
+	impl_init_image(resptr, info, a);
+	return retid@gpu_resource;
+};
+
+gpu_create_graph ::= func(name : u8?, a : arena mut? -> gpu_graph)
+{
+	ret ::= graph_count;
+	graphptr ::= impl_alloc_new_graph(a);
+	namelen ::= zstrlen(name);
+	graphptr->name = arena_alloc(a, namelen + 1);
+	memcopy(graphptr->name, name, namelen);
+	deref((graphptr->name) # namelen) = 0;
+
+	initial_timeline_capacity ::= 8;
+	graphptr->timeline = arena_alloc(a, __sizeof(graph_entry) * initial_timeline_capacity);
+	graphptr->timeline_count = 0;
+	graphptr->timeline_cap = initial_timeline_capacity;
+	return ret@gpu_graph;
+};
+
+gpu_graph_add_subgraph ::= func(graph : gpu_graph, subgraph : gpu_graph -> v0)
+{
+	graphptr ::= graphs # (graph@s64);
+	if(((graphptr->timeline_count) + 1) > (graphptr->timeline_cap))
+	{
+		putzstr("graph ran out of entries in timeline. todo: expand timeline array");
+		__debugbreak();
+	}
+	cur ::= graphptr->timeline_count;
+	entry_ptr ::= (graphptr->timeline) # cur;
+	(entry_ptr->handle) = (subgraph@s64@_);
+	entry_ptr->is_graph = true;
+	(graphptr->timeline_count) = (graphptr->timeline_count) + 1;
+};
+
+gpu_graph_add_pass ::= func(graph : gpu_graph, pass : gpu_pass -> v0)
+{
+	graphptr ::= graphs # (graph@s64);
+	if(((graphptr->timeline_count) + 1) > (graphptr->timeline_cap))
+	{
+		putzstr("graph ran out of entries in timeline. todo: expand timeline array");
+		__debugbreak();
+	}
+	cur ::= graphptr->timeline_count;
+	entry_ptr ::= (graphptr->timeline) # cur;
+	(entry_ptr->handle) = (pass@s64@_);
+	entry_ptr->is_graph = false;
+	(graphptr->timeline_count) = (graphptr->timeline_count) + 1;
+};
+
+// todo: take in render graph and go through the passes in that order instead.
+gpu_execute ::= func(graph : gpu_graph, long : arena mut?, short : arena mut? -> v0)
+{
+	graphptr ::= graphs # (graph@s64);
+	writes_to_system_image ::= impl_graph_writes_to_system_image(graph);
+	will_present ::= impl_graph_will_present(graph);
+
+	frame ::= deref(frames # current_frame);
+
+	image_index : u32 mut := -1@u32;
+	swapchain_image : u64 mut := 0;
+	if(will_present)
+	{
+		// make sure swapchain is available.
+		impl_require_swapchain(long);
+		if(swapchain_width == 0)
+		{
+			return;
+		}
+		if(swapchain_height == 0)
+		{
+			return;
+		}
+
+		vk_check(vk.acquire_next_image_khr(used_device, swapchain, 9999999999, 0, frame.swapchain_fence, ref image_index));
+		vk_check(vk.wait_for_fences(used_device, 1, ref (frame.swapchain_fence), 1, ~0));
+		vk_check(vk.reset_fences(used_device, 1, ref (frame.swapchain_fence)));
+		swapchain_image = deref(swapchain_images # image_index);
+	}
+
+	barrier : VkImageMemoryBarrier mut := VkImageMemoryBarrier
+	{
+		.sType := 45;
+		.pNext := zero;
+		.srcAccessMask := 0;
+		.dstAccessMask := 0x00001000;//VK_ACCESS_TRANSFER_WRITE_BIT
+		.oldLayout := 0;
+		.newLayout := 7; // VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+		.srcQueueFamilyIndex := ~0;
+		.dstQueueFamilyIndex := ~0;
+		.image := 0;
+		.subresourceRange := VkImageSubresourceRange
+		{
+			.aspectMask := 0x00000001;
+			.baseMipLevel := 0;
+			.levelCount := 1;
+			.baseArrayLayer := 0;
+			.layerCount := 1;
+		};
+	};
+	if(will_present)
+	{
+		(barrier.image) = swapchain_image;
+	}
+
+	frame_begin ::= VkCommandBufferBeginInfo
+	{
+		.sType := 42;
+		.pNext := zero;
+		.flags := 1;
+		.pInheritanceInfo := zero;
+	};
+	vk_check(vk.begin_command_buffer(frame.cmds, ref frame_begin));
+
+	if(will_present)
+	{
+		vk.cmd_pipeline_barrier(frame.cmds, 0x00002000, 0x00001000, 0, 0, zero, 0, zero, 1, ref barrier);
+	}
+
+	counter : u64 mut;
+	cur_entry : graph_entry mut;
+	for(counter = 0, counter < (graphptr->timeline_count), counter = counter + 1)
+	{
+		cur_entry = deref((graphptr->timeline) # counter);
+		if(cur_entry.is_graph)
+		{
+			impl_record_subgraph_work((cur_entry.handle)@s64@gpu_graph, long, short);
+		}
+		else
+		{
+			impl_record_gpu_work((cur_entry.handle)@s64@gpu_pass, current_frame, long, short);
+		}
+	}
+
+	// if we just wrote to the system image:
+	// 	1. system image must be in color attachment layout. to eventually present later on, we should now transition to transfer_src (to transfer it to swapchain image).
+	// 	2. record a command to do the blit (swapchain image should be transfer_dst)
+	// 	3. transition the swapchain image to present_src.
+	if(writes_to_system_image)
+	{
+		blit_label ::= VkDebugUtilsLabelEXT
+		{
+			.sType := 1000128002;
+			.pNext := zero;
+			.pLabelName := "Blit System Image -> Swapchain Image";
+			.color := zero;
+		};
+		if(is_debug_utils_enabled)
+		{
+			vk.cmd_begin_debug_utils_label_ext(frame.cmds, ref blit_label);
+		}
+		blit : VkImageBlit mut := VkImageBlit
+		{
+			.srcSubresource := VkImageSubresourceLayers
+			{
+				.aspectMask := 0x00000001;
+				.mipLevel := 0;
+				.baseArrayLayer := 0;
+				.layerCount := 1;
+			};
+			.srcOffsets := zero;
+			.dstSubresource := VkImageSubresourceLayers
+			{
+				.aspectMask := 0x00000001;
+				.mipLevel := 0;
+				.baseArrayLayer := 0;
+				.layerCount := 1;
+			};
+			.dstOffsets := zero;
+		};
+		deref((blit.srcOffsets) # 0) = VkOffset3D{.x := 0; .y := 0; .z := 0;};
+		deref((blit.srcOffsets) # 1) = VkOffset3D{.x := swapchain_width@_; .y := swapchain_height@_; .z := 1;};
+		deref((blit.dstOffsets) # 0) = VkOffset3D{.x := 0; .y := 0; .z := 0;};
+		deref((blit.dstOffsets) # 1) = VkOffset3D{.x := swapchain_width@_; .y := swapchain_height@_; .z := 1;};
+
+		system_image_transition ::= VkImageMemoryBarrier
+		{
+			.sType := 45;
+			.pNext := zero;
+			.srcAccessMask := 0x00000100; // VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT 
+			.dstAccessMask := 0x00000800; // VK_ACCESS_TRANSFER_READ_BIT
+			.oldLayout := 2; // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+			.newLayout := 6; // VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+			.srcQueueFamilyIndex := ~0;
+			.dstQueueFamilyIndex := ~0;
+			.image := system_image;
+			.subresourceRange := VkImageSubresourceRange
+			{
+				.aspectMask := 0x00000001;
+				.baseMipLevel := 0;
+				.levelCount := 1;
+				.baseArrayLayer := 0;
+				.layerCount := 1;
+			};
+		};
+
+		vk.cmd_pipeline_barrier(frame.cmds, 0x00000400, 0x00001000, 0, 0, zero, 0, zero, 1, ref system_image_transition);
+		vk.cmd_blit_image(frame.cmds, system_image, 6, swapchain_image, 7, 1, ref blit, 0);
+
+		if(is_debug_utils_enabled)
+		{
+			vk.cmd_end_debug_utils_label_ext(frame.cmds);
+		}
+	}
+
+	if(will_present)
+	{
+		barrier.oldLayout = 7;
+		barrier.newLayout = 1000001002;
+		barrier.srcAccessMask = 0x00001000;
+		barrier.dstAccessMask = 0;
+		vk.cmd_pipeline_barrier(frame.cmds, 0x00001000, 0x00000001, 0, 0, zero, 0, zero, 1, ref barrier);
+	}
+
+	vk_check(vk.end_command_buffer(frame.cmds));
+	wait_stage : s32 := 0;
+	submit ::= VkSubmitInfo
+	{
+		.sType := 4;
+		.pNext := zero;
+		.waitSemaphoreCount := 0;
+		.pWaitSemaphores := zero;
+		.pWaitDstStageMask := ref wait_stage;
+		.commandBufferCount := 1;
+		.pCommandBuffers := ref (frame.cmds);
+		.signalSemaphoreCount := 1;
+		.pSignalSemaphores := ref (frame.swapchain_sem);
+	};
+	vk_check(vk.queue_submit(graphics_queue, 1, ref submit, frame.swapchain_fence));
+	vk_check(vk.wait_for_fences(used_device, 1, ref (frame.swapchain_fence), 1, -1@u64));
+	vk_check(vk.reset_fences(used_device, 1, ref (frame.swapchain_fence)));
+
+	// present if we need to.
+	present_res : s32 mut;
+	if(will_present)
+	{
+		present ::= VkPresentInfoKHR
+		{
+			.sType := 1000001001;
+			.pNext := zero;
+			.waitSemaphoreCount := 1;
+			.pWaitSemaphores := ref (frame.swapchain_sem);
+			.swapchainCount := 1;
+			.pSwapchains := ref swapchain;
+			.pImageIndices := ref image_index;
+			.pResults := ref present_res;
+		};
+		vk_check(vk.queue_present_khr(graphics_queue, ref present));
+		vk_check(present_res);
+	}
+
+	current_frame = ((current_frame + 1) % 2);
+};
+
+gpu_resource_write ::= func(res : gpu_resource, data : v0? weak, data_size : u64, offset : u64 -> v0)
+{
+	resptr ::= (resources # (res@s64));
+	rinfo ::= ref (resptr->info);
+
+	memcopy(rinfo->data, data, data_size);
+	impl_write_a_resource(resptr, data_size, offset);
+};
+
+gpu_resource_read ::= func(res : gpu_resource, buf : v0? weak, len : u64, offset : u64 -> v0)
+{
+	if(gpu_resource_size(res) <= (offset + len))
+	{
+		putzstr("resource read out of range");
+		__debugbreak();
+	}
+	resptr ::= resources # (res@s64);
+	rinfo ::= resptr->info;
+	is_dynamic_buffer ::= (((rinfo.buffer_flags) & (gpu_buffer_flag.dynamic)) != zero) && resptr->is_buffer;
+	if(is_dynamic_buffer)
+	{
+		mapped_ptr ::= (resptr->mapped_ptr)@u8 mut?;
+		memcopy(buf, mapped_ptr # offset, len);
+	}
+	else
+	{
+		ptr ::= (rinfo.data)@u8 mut?;
+		memcopy(buf, ptr # offset, len);
+	}
+};
+
+gpu_resource_size ::= func(res : gpu_resource -> u64)
+{
+	resptr ::= resources # (res@s64);
+	rinfo ::= resptr->info;
+	return rinfo.data_size;
+};
+
+gpu_resource_mapping ::= func(res : gpu_resource -> u8 mut?)
+{
+	resptr ::= resources # (res@s64);
+	rinfo ::= resptr->info;
+	is_dynamic_buffer ::= (((rinfo.buffer_flags) & (gpu_buffer_flag.dynamic)) != zero) && resptr->is_buffer;
+	if(!is_dynamic_buffer)
+	{
+		putzstr("gpu_resource_mapping only callable on dynamic buffers");
+		__debugbreak();
+	}
+	return resptr->mapped_ptr@_;
+};
+
+gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena mut?, short : arena mut? -> v0)
+{
+	resptr ::= resources # (res@s64);
+	oldinfo ::= resptr->info;
+	olddata ::= oldinfo.data;
+	olddatasize ::= oldinfo.data_size;
+	if(olddatasize == new_size)
+	{
+		return;
+	}
+
+	vk.device_wait_idle(used_device);
+	vk.destroy_buffer(used_device, resptr->vk_handle, zero);
+
+	if(new_size > olddatasize)
+	{
+		// ok a bit of trouble. old data is too small. need to realloc to be large enough.
+		oldinfo.data = arena_alloc(long, new_size);
+		oldinfo.data_size = new_size;
+
+		// preserve old data
+		memcopy(oldinfo.data, olddata, olddatasize);
+		// fill the rest with zeros.
+		offset_ptr ::= (oldinfo.data)@u8 mut? mut;
+		offset_ptr = offset_ptr # olddatasize;
+		memfill(offset_ptr, 0, new_size - olddatasize);
+	}
+
+	impl_init_buffer(resptr, oldinfo, long);
+
+	// problem is, all the passes that use this buffer as a resource will need to have their metabuffer written to.
+	// this is because the metabuffer will contain the BDA of the old buffer which is now out of date.
+	// solution:
+	// for all passes, if they contained this buffer, rewrite their metabuffers.
+	counter : u64 mut;
+	for(counter = 0, counter < passes_count, counter = counter + 1)
+	{
+		if(impl_pass_uses_resource(counter@s64@gpu_pass, res))
+		{
+			impl_write_resources(passes # counter, long, short);
+		}
+	}
+};
+
+// IMPLEMENTATION
+scratch_data ::= struct
+{
+	cpool : u64;
+	cmds : u64;
+	fence : u64;
+};
+
+// globals.
+MAX_GLOBAL_IMAGE_COUNT ::= 8192;
+MAX_IMAGE_COUNT_PER_PASS ::= 4096;
+
+scratch : scratch_data mut;
+set_layouts : u64 mut[2] mut;
+descriptor_pools_data : u64 mut? mut;
+descriptor_pools_count : u64 mut := 0;
+descriptor_pools_cap : u64 mut := 0;
+
+shader_data_t ::= struct
+{
+	is_graphics : bool;
+	vertex_module : u64;
+	fragment_module : u64;
+	compute_module : u64;
+};
+
+shaders : shader_data_t mut? mut;
+shaders_count : u64 mut := 0;
+shaders_cap : u64 mut := 0;
+
+graph_entry ::= struct
+{
+	handle : u64 mut;
+	is_graph : bool mut;
+};
+
+graph_data_t ::= struct
+{
+	name : u8 mut?;
+	timeline : graph_entry mut?;
+	timeline_count : u64;
+	timeline_cap : u64;
+};
+
+graphs : graph_data_t mut? mut;
+graph_count : u64 mut := 0;
+graph_cap : u64 mut := 0;
+
+// internal pass data.
+pass_data_t ::= struct
+{
+	info : gpu_pass_info;
+	metabuf : u64;
+	metabuf_size : u64;
+	is_compute : bool;
+	pipeline : u64;
+
+	targets_swapchain : bool;
+	colour_target_dimensions : u32[2];
+
+	descriptor_sets : u64 mut[2];
+};
+
+passes : pass_data_t mut? mut;
+passes_count : u64 mut := 0;
+passes_cap : u64 mut := 0;
+
+// implementation details
+
+impl_pass_uses_resource ::= func(pass : gpu_pass, res : gpu_resource -> bool)
+{
+	counter : u64 mut;
+	cur_res : gpu_resource mut;
+	for(counter = 0, counter < passes_count, counter = counter + 1)
+	{
+		passptr : pass_data_t? := passes # counter;
+		passinfo ::= passptr->info;
+		cur_residx : u64 mut;
+		for(cur_residx = 0, cur_residx < (passinfo.resources_count), cur_residx = cur_residx + 1)
+		{
+			cur_res = deref((passinfo.resources_data) # cur_residx);
+			if(cur_res == res)
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+};
+
+impl_new_descriptor_pool ::= func(a : arena mut? -> u64)
+{
+	if(descriptor_pools_cap == 0)
+	{
+		descriptor_pools_cap = 4;
+		descriptor_pools_data = arena_alloc(a, descriptor_pools_cap * __sizeof(deref descriptor_pools_data));
+	}
+	if(descriptor_pools_count >= descriptor_pools_cap)
+	{
+		putzstr("todo: expand allocation of descriptor pool handles");
+		__debugbreak();
+	}
+
+	image_limit ::= VkDescriptorPoolSize
+	{
+		.type := 1; // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+		.descriptorCount := MAX_IMAGE_COUNT_PER_PASS;
+	};
+	create ::= VkDescriptorPoolCreateInfo
+	{
+		.sType := 33;
+		.pNext := zero;
+		.flags := 0x00000002;
+		.maxSets := frame_overlap * 256;
+		.poolSizeCount := 1;
+		.pPoolSizes := ref image_limit;
+	};
+	newpool : u64 mut;
+	vk_check(vk.create_descriptor_pool(used_device, ref create, zero, ref newpool));
+	deref(descriptor_pools_data # descriptor_pools_count) = newpool;
+	descriptor_pools_count = descriptor_pools_count + 1;
+	return newpool;
+};
+
+impl_try_allocate_descriptors ::= func(pool : u64, sets_data : u64 mut?, image_count : u32 -> bool)
+{
+	variable_counts : u32 mut[2];
+	deref(variable_counts # 0) = image_count;
+	deref(variable_counts # 1) = image_count;
+
+	variable_alloc ::= VkDescriptorSetVariableDescriptorCountAllocateInfo
+	{
+		.sType := 1000161003;
+		.pNext := zero;
+		.descriptorSetCount := 2;
+		.pDescriptorCounts := variable_counts # 0;
+	};
+	alloc ::= VkDescriptorSetAllocateInfo
+	{
+		.sType := 34;
+		.pNext := (ref variable_alloc)@_;
+		.descriptorPool := pool;
+		.descriptorSetCount := 2;
+		.pSetLayouts := set_layouts # 0;
+	};
+	return (vk.allocate_descriptor_sets(used_device, ref alloc, sets_data)) == 0;
+};
+
+impl_populate_descriptors ::= func(passptr : pass_data_t mut?, long : arena mut?, short : arena mut? -> v0)
+{
+	pinfo ::= passptr->info;
+	if(descriptor_pools_count == 0)
+	{
+		impl_new_descriptor_pool(long);
+	}
+	pool : u64 mut := deref(descriptor_pools_data # (descriptor_pools_count - 1));
+
+	counter : u64 mut;
+	image_count : u32 mut := 0;
+	cur_resh : gpu_resource mut;
+	resptr : resource_data_t? mut;
+	for(counter = 0, counter < (pinfo.resources_count), counter = counter + 1)
+	{
+		cur_resh = deref((pinfo.resources_data) # counter);
+		if(cur_resh != (gpu_resource.invalid))
+		{
+			if(cur_resh == (gpu_resource.window_resource))
+			{
+				image_count = image_count + 1;
+			}
+			if(cur_resh != (gpu_resource.window_resource))
+			{
+				resptr = resources # (cur_resh@s64);
+				if(!(resptr->is_buffer))
+				{
+					image_count = image_count + 1;
+				}
+			}
+		}
+	}
+
+	// allocate descriptors
+	alloc_success : bool mut := impl_try_allocate_descriptors(pool, passptr->descriptor_sets # 0, image_count);
+	while(!alloc_success)
+	{
+		pool = impl_new_descriptor_pool(long);
+		alloc_success = impl_try_allocate_descriptors(pool, passptr->descriptor_sets # 0, image_count);
+	}
+
+	// write to them.
+	image_array_descriptor_binding ::= 1;
+	image_writes : VkDescriptorImageInfo mut? := arena_alloc(short, __sizeof(VkDescriptorImageInfo) * image_count * frame_overlap);
+
+	meta_buffer_write ::= VkDescriptorBufferInfo
+	{
+		.buffer := passptr->metabuf;
+		.offset := 0;
+		.range := ~0;
+	};
+
+	descriptor_writes : VkWriteDescriptorSet mut[4];
+	// first write to the meta buffers.
+	deref(descriptor_writes # 0) = VkWriteDescriptorSet
+	{
+		.sType := 35;
+		.pNext := zero;
+		.dstSet := deref(passptr->descriptor_sets # 0);
+		.dstBinding := 0;
+		.dstArrayElement := 0;
+		.descriptorCount := 1;
+		.descriptorType := 7; // VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+		.pImageInfo := zero;
+		.pBufferInfo := ref meta_buffer_write;
+		.pTexelBufferView := zero;
+	};
+
+	deref(descriptor_writes # 1) = VkWriteDescriptorSet
+	{
+		.sType := 35;
+		.pNext := zero;
+		.dstSet := deref(passptr->descriptor_sets # 1);
+		.dstBinding := 0;
+		.dstArrayElement := 0;
+		.descriptorCount := 1;
+		.descriptorType := 7; // VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+		.pImageInfo := zero;
+		.pBufferInfo := ref meta_buffer_write;
+		.pTexelBufferView := zero;
+	};
+
+	// now let's do the images.
+	i : u32 mut;
+	j : u64 mut;
+	img_cursor : u64 mut := 0;
+	for(i = 0, i < frame_overlap, i = i + 1)
+	{
+		for(j = 0, j < (pinfo.resources_count), j = j + 1)
+		{
+			cur_resh = deref((pinfo.resources_data) # j);
+			if(cur_resh != (gpu_resource.invalid))
+			{
+				if(cur_resh != (gpu_resource.window_resource))
+				{
+					resptr = resources # (cur_resh@s64);
+					if(!(resptr->is_buffer))
+					{
+						deref(image_writes # img_cursor) = VkDescriptorImageInfo
+						{
+							.sampler := resptr->sampler;
+							.imageView := resptr->image_view;
+							.imageLayout := 5; // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+						};
+						img_cursor = img_cursor + 1;
+					}
+				}
+			}
+		}
+		deref(descriptor_writes # (2 + i)) = VkWriteDescriptorSet
+		{
+			.sType := 35;
+			.pNext := zero;
+			.dstSet := deref(passptr->descriptor_sets # i);
+			.dstBinding := image_array_descriptor_binding;
+			.dstArrayElement := 0;
+			.descriptorCount := image_count;
+			.descriptorType := 1; // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+			.pImageInfo := image_writes # (i * image_count);
+			.pBufferInfo := ref meta_buffer_write;
+			.pTexelBufferView := zero;
+		};
+	}
+
+	write_count : u32 mut := 4;
+	if(image_count == 0)
+	{
+		write_count = 2;
+	}
+	vk.update_descriptor_sets(used_device, write_count, descriptor_writes # 0, 0, zero);
+};
+
+impl_shader_is_compute ::= func(shader : gpu_shader -> bool)
+{
+	shadptr ::= (shaders # (shader@s64));
+	return (shadptr->compute_module) != 0;
+};
+
+impl_begin_scratch_commands ::= func( -> v0)
+{
+	create ::= VkCommandBufferBeginInfo
+	{
+		.sType := 42;
+		.pNext := zero;
+		.flags := 0x00000001; //VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+		.pInheritanceInfo := zero;
+	};
+
+	vk_check(vk.begin_command_buffer(scratch.cmds, ref create));
+};
+
+impl_end_and_execute_scratch_commands ::= func( -> v0)
+{
+	vk_check(vk.end_command_buffer(scratch.cmds));
+	submit ::= VkSubmitInfo
+	{
+		.sType := 4;
+		.pNext := zero;
+		.waitSemaphoreCount := 0;
+		.pWaitSemaphores := zero;
+		.pWaitDstStageMask := zero;
+		.commandBufferCount := 1;
+		.pCommandBuffers := ref (scratch.cmds);
+		.signalSemaphoreCount := 0;
+		.pSignalSemaphores := zero;
+	};
+	vk_check(vk.queue_submit(graphics_queue, 1, ref submit, scratch.fence));
+	vk_check(vk.wait_for_fences(used_device, 1, ref (scratch.fence), 1, -1@u64));
+	vk_check(vk.reset_fences(used_device, 1, ref (scratch.fence)));
+};
+
+impl_create_graphics_pipeline ::= func(shader : gpu_shader, graphics : gpu_graphics_state, a : arena mut? -> u64)
+{
+	shadptr ::= (shaders # (shader@s64));
+	vertex_shader_module ::= shadptr->vertex_module;
+	if(vertex_shader_module == 0)
+	{
+		putzstr("invalid vertex shader");
+		__debugbreak();
+	}
+	fragment_shader_module ::= shadptr->fragment_module;
+	if(fragment_shader_module == 0)
+	{
+		putzstr("invalid fragment shader");
+		__debugbreak();
+	}
+
+	shader_creates : VkPipelineShaderStageCreateInfo mut[2];
+	deref(shader_creates # 0) = VkPipelineShaderStageCreateInfo
+	{
+		.sType := 18;
+		.pNext := zero;
+		.flags := 0;
+		.stage := 0x00000001;
+		.module := vertex_shader_module;
+		.pName := "main";
+		.pSpecializationInfo := zero;
+
+	};
+	deref(shader_creates # 1) = VkPipelineShaderStageCreateInfo
+	{
+		.sType := 18;
+		.pNext := zero;
+		.flags := 0;
+		.stage := 0x00000010;
+		.module := fragment_shader_module;
+		.pName := "main";
+		.pSpecializationInfo := zero;
+	};
+
+	vtx ::= VkPipelineVertexInputStateCreateInfo
+	{
+		.sType := 19;
+		.pNext := zero;
+		.flags := 0;
+		.vertexBindingDescriptionCount := 0;
+		.pVertexBindingDescriptions := zero;
+		.vertexAttributeDescriptionCount := 0;
+		.pVertexAttributeDescriptions := zero;
+	};
+
+	iasm ::= VkPipelineInputAssemblyStateCreateInfo
+	{
+		.sType := 20;
+		.pNext := zero;
+		.flags := 0;
+		.topology := 3;
+		.primitiveRestartEnable := 0;
+	};
+
+	tess ::= VkPipelineTessellationStateCreateInfo
+	{
+		.sType := 21;
+		.pNext := zero;
+		.flags := 0;
+		.patchControlPoints := 3;
+	};
+
+	vwprt ::= VkPipelineViewportStateCreateInfo
+	{
+		.sType := 22;
+		.pNext := zero;
+		.flags := 0;
+		.viewportCount := 1;
+		//remember: this is dynamic state so we pass zeros even though there will be a viewport and scissor.
+		.pViewports := zero;
+		.scissorCount := 1;
+		.pScissors := zero;
+	};
+
+	cull_bits : s32 mut;
+	if(graphics.culling == (gpu_cull.both))
+	{
+		cull_bits = 3;
+	}
+	if(graphics.culling == (gpu_cull.front))
+	{
+		cull_bits = 1;
+	}
+	if(graphics.culling == (gpu_cull.back))
+	{
+		cull_bits = 2;
+	}
+	if(graphics.culling == (gpu_cull.none))
+	{
+		cull_bits = 0;
+	}
+
+	raster ::= VkPipelineRasterizationStateCreateInfo
+	{
+		.sType := 23;
+		.pNext := zero;
+		.flags := 0;
+		.depthClampEnable := 0;
+		.rasterizerDiscardEnable := 0;
+		.polygonMode := 0;
+		.cullMode := cull_bits;
+		.frontFace := 0;
+		.depthBiasEnable := 0;
+		.depthBiasConstantFactor := 0.0;
+		.depthBiasClamp := 0.0;
+		.depthBiasSlopeFactor := 0.0;
+		.lineWidth := 1.0;
+	};
+
+	multi ::= VkPipelineMultisampleStateCreateInfo
+	{
+		.sType := 24;
+		.pNext := zero;
+		.flags := 0;
+		.rasterizationSamples := 1;
+		.sampleShadingEnable := 0;
+		.minSampleShading := 1.0;
+		.pSampleMask := zero;
+		.alphaToCoverageEnable := 0;
+		.alphaToOneEnable := 0;
+	};
+
+	depth_stencil ::= VkPipelineDepthStencilStateCreateInfo
+	{
+		.sType := 25;
+		.pNext := zero;
+		.flags := 0;
+		.depthTestEnable := (graphics.depth_target != (gpu_resource.invalid))@_;
+		.depthWriteEnable := (graphics.depth_target != (gpu_resource.invalid))@_;
+		.depthCompareOp := 1;
+		.depthBoundsTestEnable := 0;
+		.stencilTestEnable := 0;
+		.front := zero;
+		.back := zero;
+		.minDepthBounds := 0.0;
+		.maxDepthBounds := 1.0;
+	};
+
+	counter : u64 mut;
+	blend_states : VkPipelineColorBlendAttachmentState mut? := arena_alloc(a, __sizeof(VkPipelineColorBlendAttachmentState) * (graphics.colour_targets_count));
+	for(counter = 0, counter < (graphics.colour_targets_count), counter = counter + 1)
+	{
+		deref(blend_states # counter) = VkPipelineColorBlendAttachmentState
+		{
+			.blendEnable := 0;
+			.srcColorBlendFactor := 1;
+			.dstColorBlendFactor := 0;
+			.colorBlendOp := 0;
+			.srcAlphaBlendFactor := 1;
+			.dstAlphaBlendFactor := 0;
+			.alphaBlendOp := 0;
+			.colorWriteMask := (0x00000001 | 0x00000002 | 0x00000004 | 0x00000008);
+		};
+	}
+
+	blend ::= VkPipelineColorBlendStateCreateInfo
+	{
+		.sType := 26;
+		.pNext := zero;
+		.flags := 0;
+		.logicOpEnable := 0;
+		.logicOp := 0;
+		.attachmentCount := (graphics.colour_targets_count)@_;
+		.pAttachments := blend_states # 0;
+	};
+	deref((blend.blendConstants) # 0) = 0.0;
+	deref((blend.blendConstants) # 1) = 0.0;
+	deref((blend.blendConstants) # 2) = 0.0;
+	deref((blend.blendConstants) # 3) = 0.0;
+
+	color_formats : s32 mut? := arena_alloc(a, __sizeof(s32) * (graphics.colour_targets_count));
+	for(counter = 0, counter < (graphics.colour_targets_count), counter = counter + 1)
+	{
+		deref(color_formats # counter) = rgba_format;
+	}
+	counter = 0;
+
+	rendering ::= VkPipelineRenderingCreateInfo
+	{
+		.sType := 1000044002;
+		.pNext := zero;
+		.viewMask := 0;
+		.colorAttachmentCount := (graphics.colour_targets_count)@_;
+		.pColorAttachmentFormats := color_formats;
+		.depthAttachmentFormat := 126;
+		.stencilAttachmentFormat := 0;
+	};
+
+	dynamic_states : s32 mut[2];
+	deref(dynamic_states # 0) = 0; // VK_DYNAMIC_STATE_VIEWPORT
+	deref(dynamic_states # 1) = 1; // VK_DYNAMIC_STATE_SCISSOR
+
+	dyn ::= VkPipelineDynamicStateCreateInfo
+	{
+		.sType := 27;
+		.pNext := zero;
+		.flags := 0;
+		.dynamicStateCount := (__sizeof(dynamic_states) / __sizeof(deref(dynamic_states # 0)));
+		.pDynamicStates := dynamic_states # 0;
+	};
+
+	create ::= VkGraphicsPipelineCreateInfo
+	{
+		.sType := 28;
+		.pNext := (ref rendering)@_;
+		.flags := 0;
+		.stageCount := 2;
+		.pStages := shader_creates # 0;
+		.pVertexInputState := ref vtx;
+		.pInputAssemblyState := ref iasm;
+		.pTessellationState := ref tess;
+		.pViewportState := ref vwprt;
+		.pRasterizationState := ref raster;
+		.pMultisampleState := ref multi;
+		.pDepthStencilState := ref depth_stencil;
+		.pColorBlendState := ref blend;
+		.pDynamicState := ref dyn;
+		.layout := pipeline_layout;
+		.renderPass := 0;
+		.subpass := 0;
+		.basePipelineHandle := 0;
+		.basePipelineIndex := -1;
+	};
+
+	ret : u64 mut;
+	vk_check(vk.create_graphics_pipelines(used_device, 0, 1, ref create, zero, ref ret));
+	return ret;
+};
+
+impl_create_compute_pipeline ::= func(shader : gpu_shader, compute : gpu_compute_state -> u64)
+{
+	shadptr ::= (shaders # (shader@s64));
+	compute_shader_module ::= shadptr->compute_module;
+	if(compute_shader_module == 0)
+	{
+		putzstr("invalid compute shader");
+		__debugbreak();
+	}
+	create ::= VkComputePipelineCreateInfo
+	{
+		.sType := 29;
+		.pNext := zero;
+		.flags := 0;
+		.stage := VkPipelineShaderStageCreateInfo
+		{
+			.sType := 18;
+			.pNext := zero;
+			.flags := 0;
+			.stage := 0x00000020; 
+			.module := compute_shader_module;
+			.pName := "main";
+			.pSpecializationInfo := zero;
+		};
+		.layout := pipeline_layout;
+		.basePipelineHandle := 0;
+		.basePipelineIndex := -1;
+	};
+	ret : u64 mut;
+
+	vk_check(vk.create_compute_pipelines(used_device, 0, 1, ref create, zero, ref ret));
+	return ret;
+};
+
+impl_get_pass_colour_target_dimensions ::= func(passptr : pass_data_t? -> u32[2])
+{
+	pinfo ::= passptr->info;
+	ginfo ::= pinfo.graphics;
+	if(ginfo.colour_targets_count == 0)
+	{
+		putzstr("bad pass - no colour targets.");
+	}
+	first_colour_target : gpu_resource mut := zero;
+	first_colour_target = deref ((ginfo.colour_targets_data) # 0);
+	//first_colour_target ::= deref ((ginfo.colour_targets_data) # 0);
+	if(first_colour_target == (gpu_resource.window_resource))
+	{
+		return u32[2]
+		{
+			swapchain_width@_;
+			swapchain_height@_;
+		};
+	}
+	res ::= (resources # (first_colour_target@s64));
+	resinfo ::= res->info;
+	return resinfo.image_dimensions;
+};
+
+impl_record_compute_work ::= func(passptr : pass_data_t mut?, frame_id : u64 -> v0)
+{
+	frame ::= deref(frames # frame_id);
+	pinfo ::= passptr->info;
+	cinfo ::= pinfo.compute;
+
+	vk.cmd_bind_pipeline(frame.cmds, 0, passptr->pipeline);
+	vk.cmd_bind_descriptor_sets(frame.cmds, 0, pipeline_layout, 0, 1, passptr->descriptor_sets # current_frame, 0, zero);
+	vk.cmd_dispatch(frame.cmds, cinfo.kernelx@_, cinfo.kernely@_, cinfo.kernelz@_);
+};
+
+impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, long : arena mut?, short : arena mut? -> v0)
+{
+	frame ::= deref(frames # frame_id);
+	pinfo ::= passptr->info;
+	ginfo ::= pinfo.graphics;
+	ccount ::= ginfo.colour_targets_count;
+
+	if(ccount == 0)
+	{
+		putzstr("doesn't make sense to have a graphics pass with no colour attachments. please use one.");
+		__debugbreak();
+	}
+
+	colour_attachments : VkRenderingAttachmentInfo mut? := arena_alloc(short, __sizeof(VkRenderingAttachmentInfo) * ccount);
+	colour_transitions : VkImageMemoryBarrier mut? := arena_alloc(short, __sizeof(VkImageMemoryBarrier) * ccount);
+	colour_transition_count : u64 mut := 0;
+
+	counter : u64 mut := 0;
+	colour_target : gpu_resource mut;
+	resptr : resource_data_t mut? mut;
+	render_target : u64 mut;
+	render_target_view : u64 mut;
+	depth_target : u64 mut;
+	depth_target_view : u64 mut;
+
+	if(passptr->targets_swapchain)
+	{
+		impl_require_swapchain(long);
+
+		dims ::= passptr->colour_target_dimensions;
+		if(deref(dims # 0) != swapchain_width@_)
+		{
+			(passptr->colour_target_dimensions) = impl_get_pass_colour_target_dimensions(passptr);
+		}
+		if(deref(dims # 1) != swapchain_height@_)
+		{
+			(passptr->colour_target_dimensions) = impl_get_pass_colour_target_dimensions(passptr);
+		}
+	}
+	dimensions ::= (passptr->colour_target_dimensions);
+	w ::= deref(dimensions # 0);
+	h ::= deref(dimensions # 1);
+
+	for(counter = 0, counter < ccount, counter = counter + 1)
+	{
+		colour_target = deref ((ginfo.colour_targets_data) # counter);
+		render_target = 0;
+		render_target_view = 0;
+
+		if(colour_target == (gpu_resource.window_resource))
+		{
+			// need a new swapchain!
+			render_target = system_image;
+			render_target_view = system_image_view;
+		}
+		else
+		{
+			resptr = (resources # (colour_target@s64));
+			render_target = (resptr->vk_handle);
+			render_target_view = (resptr->image_view);
+		}
+
+		deref(colour_attachments # counter) = VkRenderingAttachmentInfo
+		{
+			.sType := 1000044001;
+			.pNext := zero;
+			.imageView := render_target_view;
+			.imageLayout := 2; //VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+			.resolveMode := 0;
+			.resolveImageView := 0;
+			.resolveImageLayout := 0;
+			//.loadOp := 0; // VK_ATTACHMENT_LOAD_OP_LOAD (if we're noit clearing colour targets)
+			.loadOp := 1; // VK_ATTACHMENT_LOAD_OP_CLEAR (if we are clearing colour targets)
+			.storeOp := 0;
+			.clearValue := VkClearValue{.color := VkClearColorValue{.float32 := ginfo.clear_colour;};};
+		};
+		if(true) //todo: if we're not clearing colour targets
+		{
+			deref (colour_transitions # colour_transition_count) = VkImageMemoryBarrier
+			{
+				.sType := 45;
+				.pNext := zero;
+				.srcAccessMask := 0;
+				.dstAccessMask := 0x00000100; // VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+				.oldLayout := 0;
+				.newLayout := 2; // VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+				.srcQueueFamilyIndex := ~0;
+				.dstQueueFamilyIndex := ~0;
+				.image := render_target;
+				.subresourceRange := VkImageSubresourceRange
+				{
+					.aspectMask := 0x00000001; // VK_IMAGE_ASPECT_COLOR_BIT 
+					.baseMipLevel := 0;
+					.levelCount := 1;
+					.baseArrayLayer := 0;
+					.layerCount := 1;
+				};
+			};
+			colour_transition_count = colour_transition_count + 1;
+		}
+	}
+	depth_attachment_value : VkRenderingAttachmentInfo mut;
+	depth_attachment : VkRenderingAttachmentInfo? mut := zero;
+	if(ginfo.depth_target != (gpu_resource.invalid))
+	{
+		depth_attachment = ref depth_attachment_value;
+		if(ginfo.depth_target == (gpu_resource.window_resource))
+		{
+			depth_target = system_depth_image;
+			depth_target_view = system_depth_image_view;
+		}
+		else
+		{
+			// its an actual target
+			depthresptr ::= (resources # (ginfo.depth_target@s64));
+			depth_target = (depthresptr->vk_handle);
+			depth_target_view = (depthresptr->image_view);
+		}
+
+		depth_attachment_value = VkRenderingAttachmentInfo
+		{
+			.sType := 1000044001;
+			.pNext := zero;
+			.imageView := depth_target_view;
+			.imageLayout := 1000241000; //VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
+			.resolveMode := 0;
+			.resolveImageView := 0;
+			.resolveImageLayout := 0;
+			//.loadOp := 0; // VK_ATTACHMENT_LOAD_OP_LOAD (if we're noit clearing colour targets)
+			.loadOp := 1; // VK_ATTACHMENT_LOAD_OP_CLEAR (if we are clearing colour targets)
+			.storeOp := 0;
+			.clearValue := VkClearValue{.color := VkClearColorValue{.float32 := f32[4]{1.0; 0.0; 0.0; 0.0;};};};
+		};
+	}
+	// if we have any colour transitions # all, do a pipeline barrier with them.
+	if(colour_transition_count > 0)
+	{
+		// BOTTOM_OF_PIPE
+		// COLOUR_ATTACHMENT_OUTPUT
+		vk.cmd_pipeline_barrier(frame.cmds, 0x00002000, 0x00000400, 0, 0, zero, 0, zero, colour_transition_count@_, colour_transitions);
+	}
+	// todo: depth target stuffs.
+	render ::= VkRenderingInfo
+	{
+		.sType := 1000044000;
+		.pNext := zero;
+		.flags := 0;
+		.renderArea := VkRect2D
+		{
+			.offset := VkOffset2D{.x := 0; .y := 0;};
+			.extent := VkExtent2D
+			{
+				.width := w;
+				.height := h;
+			};
+		};
+		.layerCount := 1;
+		.viewMask := 0;
+		.colorAttachmentCount := ccount@_;
+		.pColorAttachments := colour_attachments;
+		.pDepthAttachment := depth_attachment;
+		.pStencilAttachment := zero;
+	};
+	vk.cmd_begin_rendering(frame.cmds, ref render);
+	// actually do rendering.
+	vk.cmd_bind_pipeline(frame.cmds, 0, passptr->pipeline);
+	// todo: bind index buffer if it exists.
+	vk.cmd_bind_descriptor_sets(frame.cmds, 0, pipeline_layout, 0, 1, passptr->descriptor_sets # current_frame, 0, zero);
+	viewport ::= VkViewport
+	{
+		.x := 0.0;
+		.y := h@_;
+		.width := w@_;
+		.height := -1.0 * h@_;
+		.minDepth := 0.0;
+		.maxDepth := 1.0;
+	};
+	vk.cmd_set_viewport(frame.cmds, 0, 1, ref viewport);
+
+	scissor ::= VkRect2D
+	{
+		.offset := VkOffset2D
+		{
+			.x := 0;
+			.y := 0;
+		};
+		.extent := VkExtent2D
+		{
+			.width := w;
+			.height := h;
+		};
+	};
+	vk.cmd_set_scissor(frame.cmds, 0, 1, ref scissor);
+
+	drawbufres : resource_data_t? mut;
+	drawbufinfo : gpu_resource_info mut;
+	// todo: draw buffer logic.
+	// for now we just do the draw.
+	tri_count ::= ginfo.static_tri_count;
+	drawbuf ::= ginfo.draw_buffer;
+	idxbuf ::= ginfo.index_buffer;
+	if(idxbuf == (gpu_resource.invalid))
+	{
+		if(drawbuf == (gpu_resource.invalid))
+		{
+			vk.cmd_draw(frame.cmds, (tri_count * 3)@_, 1, 0, 0);
+		}
+		if(drawbuf != (gpu_resource.invalid))
+		{
+			drawbufres = resources # (drawbuf@s64);
+			drawbufinfo = drawbufres->info;
+			draw_buf_max_size_unindexed ::= ((drawbufinfo.data_size) - __sizeof(u32)) / __sizeof(gpu_draw_command);
+			vk.cmd_draw_indirect_count(frame.cmds, drawbufres->vk_handle, __sizeof(u32), drawbufres->vk_handle, 0, draw_buf_max_size_unindexed@_, __sizeof(gpu_draw_command));
+		}
+	}
+	if(idxbuf != (gpu_resource.invalid))
+	{
+		idxbufres ::= resources # (idxbuf@s64);
+		idxbufinfo ::= idxbufres->info;
+		vk.cmd_bind_index_buffer(frame.cmds, idxbufres->vk_handle, 0, 1);
+		if(drawbuf == (gpu_resource.invalid))
+		{
+			vk.cmd_draw_indexed(frame.cmds, (tri_count * 3)@_, 1, 0, 0, 0);
+		}
+		if(drawbuf != (gpu_resource.invalid))
+		{
+			drawbufres = resources # (drawbuf@s64);
+			drawbufinfo = drawbufres->info;
+			draw_buf_max_size_indexed ::= ((drawbufinfo.data_size) - __sizeof(u32)) / __sizeof(gpu_draw_indexed_command);
+			vk.cmd_draw_indexed_indirect_count(frame.cmds, drawbufres->vk_handle, __sizeof(u32), drawbufres->vk_handle, 0, draw_buf_max_size_indexed@_, __sizeof(gpu_draw_indexed_command));
+		}
+	}
+
+	vk.cmd_end_rendering(frame.cmds);
+};
+
+impl_record_gpu_work ::= func(pass : gpu_pass, frame_id : u64, long : arena mut?, short : arena mut? -> v0)
+{
+	if(pass == (gpu_pass.present))
+	{
+		return;
+	}
+	passptr : pass_data_t mut? := passes # (pass@s64);
+
+	frame ::= deref(frames # frame_id);
+	pass_label ::= VkDebugUtilsLabelEXT
+	{
+		.sType := 1000128002;
+		.pNext := zero;
+		.pLabelName := passptr->info.name;
+		.color := zero;
+	};
+	if(is_debug_utils_enabled)
+	{
+		vk.cmd_begin_debug_utils_label_ext(frame.cmds, ref pass_label);
+	}
+	if(passptr->is_compute)
+	{
+		impl_record_compute_work(passptr, frame_id);
+	}
+	if(!(passptr->is_compute))
+	{
+		impl_record_graphics_work(passptr, frame_id, long, short);
+	}
+	if(is_debug_utils_enabled)
+	{
+		vk.cmd_end_debug_utils_label_ext(frame.cmds);
+	}
+};
+
+impl_graph_will_present ::= func(graph : gpu_graph -> bool)
+{
+	graphptr ::= graphs # (graph@s64);
+	count ::= graphptr->timeline_count;
+
+	counter : u64 mut;
+	cur_entry : graph_entry mut;
+	for(counter = 0, counter < count, counter = counter + 1)
+	{
+		cur_entry = deref (graphptr->timeline # counter);
+		if((cur_entry.handle) == ((gpu_pass.present)@s64@_))
+		{
+			return true;
+		}
+	}
+	return false;
+};
+
+impl_pass_writes_to_system_image ::= func(pass : gpu_pass -> bool)
+{
+	if(pass == (gpu_pass.present))
+	{
+		return false;
+	}
+	passptr ::= (passes # (pass@s64));
+	passinfo ::= passptr->info;
+	ginfo ::= passinfo.graphics;
+	counter : u64 mut := 0;
+	cur_colour_target : gpu_resource mut;
+	if(!(passptr->is_compute))
+	{
+		for(counter = 0, counter < (ginfo.colour_targets_count), counter = counter + 1)
+		{
+			cur_colour_target = deref((ginfo.colour_targets_data) # counter);
+			if(cur_colour_target == (gpu_resource.window_resource))
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+};
+
+impl_graph_writes_to_system_image ::= func(graph : gpu_graph -> bool)
+{
+	graphptr ::= graphs # (graph@s64);
+	count ::= graphptr->timeline_count;
+
+	counter : u64 mut;
+	cur_entry : graph_entry mut;
+	cur_pass : gpu_pass mut;
+	for(counter = 0, counter < count, counter = counter + 1)
+	{
+		cur_entry = deref (graphptr->timeline # counter);
+		if(cur_entry.is_graph)
+		{
+			if(impl_graph_writes_to_system_image(cur_entry.handle@s64@gpu_graph))
+			{
+				return true;
+			}
+		}
+		else
+		{
+			cur_pass = ((cur_entry.handle)@s64@gpu_pass);
+			if(impl_pass_writes_to_system_image(cur_pass))
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+};
+
+impl_alloc_new_pass ::= func(a : arena mut? -> pass_data_t mut?)
+{
+	if(passes_cap == 0)
+	{
+		passes = arena_alloc(a, __sizeof(pass_data_t) * 32);
+		passes_cap = 32;
+	}
+	if(passes_count > passes_cap)
+	{
+		putzstr("ran out of pass capacity. todo: fix this.");
+		__debugbreak();
+	}
+	id ::= passes_count;
+	passes_count = passes_count + 1;
+	return passes # id;
+};
+
+impl_alloc_new_shader ::= func(a : arena mut? -> shader_data_t mut?)
+{
+	if(shaders_cap == 0)
+	{
+		shaders = arena_alloc(a, __sizeof(shader_data_t) * 32);
+		shaders_cap = 32;
+	}
+	if(shaders_count > shaders_cap)
+	{
+		putzstr("ran out of shader capacity. todo: fix this.");
+		__debugbreak();
+	}
+	id ::= shaders_count;
+	shaders_count = shaders_count + 1;
+	return shaders # id;
+};
+
+impl_alloc_new_resource ::= func(a : arena mut? -> resource_data_t mut?)
+{
+	if(resource_cap == 0)
+	{
+		resources = arena_alloc(a, __sizeof(resource_data_t) * 1024);
+		resource_cap = 1024;
+	}
+	if(resource_count > resource_cap)
+	{
+		putzstr("ran out of resources. todo: fix this.");
+		__debugbreak();
+	}
+	id ::= resource_count;
+	resource_count = resource_count + 1;
+	return resources # id;
+};
+
+impl_alloc_new_graph ::= func(a : arena mut? -> graph_data_t mut?)
+{
+	if(graph_cap == 0)
+	{
+		graphs = arena_alloc(a, __sizeof(graph_data_t) * 64);
+		graph_cap = 64;
+	}
+	if(graph_count > graph_cap)
+	{
+		putzstr("ran out of graphs. todo: fix this.");
+		__debugbreak();
+	}
+	id ::= graph_count;
+	graph_count = graph_count + 1;
+	return graphs # id;
+};
+
+impl_record_subgraph_work ::= func(graph : gpu_graph, long : arena mut?, short : arena mut? -> v0)
+{
+	putzstr("subgraphs are NYI");
+	__debugbreak();
+};

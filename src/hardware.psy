@@ -1,0 +1,476 @@
+used_device : u64 mut;
+used_hardware : u64 mut;
+used_qfi : u32 mut;
+used_mti_gpu : u32 mut;
+used_mti_cpu : u32 mut;
+graphics_queue : u64 mut;
+compute_queue : u64 mut;
+
+pipeline_layout : u64 mut;
+gpu_hardware_type ::= enum
+{
+	.gpu := 0;
+	.igpu := 1;
+	.cpu := 2;
+	.unknown := 3;
+};
+
+gpu_hardware_caps ::= enum
+{
+	.graphics_compute := 0;
+	.graphics_only := 1;
+	.compute_only := 2;
+	.none := 3;
+};
+
+gpu_hardware ::= struct
+{
+	name : u8 mut?;
+	target_heap_gpu : u64;
+	target_heap_cpu : u64;
+	vram_size_mib : u64;
+	type : gpu_hardware_type;
+	caps : gpu_hardware_caps;
+	id : u32;
+	native_handle : u64;
+};
+
+gpu_hardware_count ::= func( -> u64)
+{
+	ret : u32 mut;
+	vk_check(vk.enumerate_physical_devices(vkinst, ref ret, zero));
+	return ret@_;
+};
+
+gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, a : arena mut? -> gpu_err)
+{
+	// need an array of VkPhysicalDevices for vulkan to write into.
+	pdev_storage : u64 mut? := arena_alloc(a, __sizeof(u64) * array_size);
+	physical_device_count : u32 mut := array_size@_;
+	result ::= vk.enumerate_physical_devices(vkinst, ref physical_device_count, pdev_storage);
+	if(result != 0)
+	{
+		return gpu_err.unknown;
+	}
+	
+	counter : u64 mut;
+	for(counter = 0, counter < array_size, counter = counter + 1)
+	{
+		impl_fill_hardware_info(array # counter, deref(pdev_storage # counter), a);
+	}
+	return gpu_err.none;
+};
+
+gpu_use_hardware ::= func(hardware : gpu_hardware, window : window -> v0)
+{
+	target_window = window;
+	pdev ::= hardware.native_handle;
+	queue_priority : f32 := 1.0;
+
+	qcreate ::= VkDeviceQueueCreateInfo
+	{
+		.sType := 2;
+		.pNext := zero;
+		.flags := 0;
+		.queueFamilyIndex := hardware.id;
+		.queueCount := 1;
+		.pQueuePriorities := ref queue_priority;
+	};
+
+	features13 ::= VkPhysicalDeviceVulkan13Features
+	{
+		.sType := 53;
+		.pNext := zero;
+		.robustImageAccess := 0;
+		.inlineUniformBlock := 0;
+		.descriptorBindingInlineUniformBlockUpdateAfterBind := 0;
+		.pipelineCreationCacheControl := 0;
+		.privateData := 0;
+		.shaderDemoteToHelperInvocation := 0;
+		.shaderTerminateInvocation := 0;
+		.subgroupSizeControl := 0;
+		.computeFullSubgroups := 0;
+		.synchronization2 := 1;
+		.textureCompressionASTC_HDR := 0;
+		.shaderZeroInitializeWorkgroupMemory := 0;
+		.dynamicRendering := 1;
+		.shaderIntegerDotProduct := 0;
+		.maintenance4 := 0;
+	};
+
+	features12 ::= VkPhysicalDeviceVulkan12Features 
+	{
+		.sType := 51;
+		.pNext := (ref features13)@_;
+		.samplerMirrorClampToEdge := 0;
+		.drawIndirectCount := 1;
+		.storageBuffer8BitAccess := 0;
+		.uniformAndStorageBuffer8BitAccess := 0;
+		.storagePushConstant8 := 0;
+		.shaderBufferInt64Atomics := 0;
+		.shaderSharedInt64Atomics := 0;
+		.shaderFloat16 := 0;
+		.shaderInt8 := 0;
+		.descriptorIndexing := 1;
+		.shaderInputAttachmentArrayDynamicIndexing := 0;
+		.shaderUniformTexelBufferArrayDynamicIndexing := 0;
+		.shaderStorageTexelBufferArrayDynamicIndexing := 0;
+		.shaderUniformBufferArrayNonUniformIndexing := 0;
+		.shaderSampledImageArrayNonUniformIndexing := 1;
+		.shaderStorageBufferArrayNonUniformIndexing := 0;
+		.shaderStorageImageArrayNonUniformIndexing := 0;
+		.shaderInputAttachmentArrayNonUniformIndexing := 0;
+		.shaderUniformTexelBufferArrayNonUniformIndexing := 0;
+		.shaderStorageTexelBufferArrayNonUniformIndexing := 0;
+		.descriptorBindingUniformBufferUpdateAfterBind := 0;
+		.descriptorBindingSampledImageUpdateAfterBind := 1;
+		.descriptorBindingStorageImageUpdateAfterBind := 0;
+		.descriptorBindingStorageBufferUpdateAfterBind := 0;
+		.descriptorBindingUniformTexelBufferUpdateAfterBind := 0;
+		.descriptorBindingStorageTexelBufferUpdateAfterBind := 0;
+		.descriptorBindingUpdateUnusedWhilePending := 1;
+		.descriptorBindingPartiallyBound := 1;
+		.descriptorBindingVariableDescriptorCount := 1;
+		.runtimeDescriptorArray := 1;
+		.samplerFilterMinmax := 0;
+		.scalarBlockLayout := 1;
+		.imagelessFramebuffer := 0;
+		.uniformBufferStandardLayout := 0;
+		.shaderSubgroupExtendedTypes := 0;
+		.separateDepthStencilLayouts := 0;
+		.hostQueryReset := 0;
+		.timelineSemaphore := 1;
+		.bufferDeviceAddress := 1;
+		.bufferDeviceAddressCaptureReplay := 0;
+		.bufferDeviceAddressMultiDevice := 0;
+		.vulkanMemoryModel := 0;
+		.vulkanMemoryModelDeviceScope := 0;
+		.vulkanMemoryModelAvailabilityVisibilityChains := 0;
+		.shaderOutputViewportIndex := 0;
+		.shaderOutputLayer := 0;
+		.subgroupBroadcastDynamicId := 0;
+	};
+
+	features11 ::= VkPhysicalDeviceVulkan11Features 
+	{
+		.sType := 49;
+		.pNext := (ref features12)@_;
+		.storageBuffer16BitAccess := 0;
+		.uniformAndStorageBuffer16BitAccess := 0;
+		.storagePushConstant16 := 0;
+		.storageInputOutput16 := 0;
+		.multiview := 0;
+		.multiviewGeometryShader := 0;
+		.multiviewTessellationShader := 0;
+		.variablePointersStorageBuffer := 0;
+		.variablePointers := 0;
+		.protectedMemory := 0;
+		.samplerYcbcrConversion := 0;
+		.shaderDrawParameters := 1;
+	};
+
+	enabled_features ::= VkPhysicalDeviceFeatures2
+	{
+		.sType := 1000059000;
+		.pNext := (ref features11)@_;
+		.features := VkPhysicalDeviceFeatures
+		{
+			.robustBufferAccess := 0;
+			.fullDrawIndexUint32 := 0;
+			.imageCubeArray := 0;
+			.independentBlend := 0;
+			.geometryShader := 0;
+			.tessellationShader := 0;
+			.sampleRateShading := 0;
+			.dualSrcBlend := 0;
+			.logicOp := 0;
+			.multiDrawIndirect := 0;
+			.drawIndirectFirstInstance := 0;
+			.depthClamp := 0;
+			.depthBiasClamp := 0;
+			.fillModeNonSolid := 0;
+			.depthBounds := 0;
+			.wideLines := 0;
+			.largePoints := 0;
+			.alphaToOne := 0;
+			.multiViewport := 0;
+			.samplerAnisotropy := 0;
+			.textureCompressionETC2 := 0;
+			.textureCompressionASTC_LDR := 0;
+			.textureCompressionBC := 0;
+			.occlusionQueryPrecise := 0;
+			.pipelineStatisticsQuery := 0;
+			.vertexPipelineStoresAndAtomics := 0;
+			.fragmentStoresAndAtomics := 0;
+			.shaderTessellationAndGeometryPointSize := 0;
+			.shaderImageGatherExtended := 0;
+			.shaderStorageImageExtendedFormats := 0;
+			.shaderStorageImageMultisample := 0;
+			.shaderStorageImageReadWithoutFormat := 0;
+			.shaderStorageImageWriteWithoutFormat := 0;
+			.shaderUniformBufferArrayDynamicIndexing := 0;
+			.shaderSampledImageArrayDynamicIndexing := 0;
+			.shaderStorageBufferArrayDynamicIndexing := 0;
+			.shaderStorageImageArrayDynamicIndexing := 0;
+			.shaderClipDistance := 0;
+			.shaderCullDistance := 0;
+			.shaderFloat64 := 0;
+			.shaderInt64 := 1;
+			.shaderInt16 := 0;
+			.shaderResourceResidency := 0;
+			.shaderResourceMinLod := 0;
+			.sparseBinding := 0;
+			.sparseResidencyBuffer := 0;
+			.sparseResidencyImage2D := 0;
+			.sparseResidencyImage3D := 0;
+			.sparseResidency2Samples := 0;
+			.sparseResidency4Samples := 0;
+			.sparseResidency8Samples := 0;
+			.sparseResidency16Samples := 0;
+			.sparseResidencyAliased := 0;
+			.variableMultisampleRate := 0;
+			.inheritedQueries := 0;
+		};
+	};
+
+	extensions : u8? mut[1];
+	deref(extensions # 0) = "VK_KHR_swapchain";
+	extension_count : u32 := __sizeof(extensions) / __sizeof(u8?);
+
+	create ::= VkDeviceCreateInfo
+	{
+		.sType := 3;
+		.pNext := (ref enabled_features)@_;
+		.flags := 0;
+		.queueCreateInfoCount := 1;
+		.pQueueCreateInfos := (ref qcreate)@_;
+		.enabledLayerCount := 0;
+		.ppEnabledLayerNames := zero;
+		.enabledExtensionCount := extension_count;
+		.ppEnabledExtensionNames := (extensions # 0)@_;
+		.pEnabledFeatures := zero;
+	};
+
+	vk_check(vk.create_device(pdev, ref create, zero, ref used_device));
+	used_hardware = pdev;
+	used_qfi = (hardware.id);
+	used_mti_gpu = (hardware.target_heap_gpu)@_;
+	used_mti_cpu = (hardware.target_heap_cpu)@_;
+
+	vk.get_device_queue(used_device, used_qfi, 0, ref graphics_queue);
+	vk.get_device_queue(used_device, used_qfi, 0, ref compute_queue);
+
+	pool_create ::= VkCommandPoolCreateInfo
+	{
+		.sType := 39;
+		.pNext := zero;
+		.flags := 0x02;
+		.queueFamilyIndex := used_qfi;
+	};
+	
+	counter : u64 mut := 0;
+	frame_ptr : frame_data mut? mut;
+
+	cmd_info : VkCommandBufferAllocateInfo mut := VkCommandBufferAllocateInfo
+	{
+		.sType := 40;
+		.pNext := zero;
+		.commandPool := 0;
+		.level := 0;
+		.commandBufferCount := 1;
+	};
+
+	fence_create ::= VkFenceCreateInfo
+	{
+		.sType := 8;
+		.pNext := zero;
+		.flags := 0;
+	};
+
+	sem_create ::= VkSemaphoreCreateInfo
+	{
+		.sType := 9;
+		.pNext := zero;
+		.flags := 0;
+	};
+
+	for(counter = 0, counter < frame_overlap, counter = counter + 1)
+	{
+		frame_ptr = (frames # counter);
+		vk_check(vk.create_command_pool(used_device, ref pool_create, zero, ref (frame_ptr->cpool)));
+		cmd_info.commandPool = (frame_ptr->cpool);
+		vk_check(vk.allocate_command_buffers(used_device, ref cmd_info, ref (frame_ptr->cmds)));
+
+		vk_check(vk.create_fence(used_device, ref fence_create, zero, ref (frame_ptr->swapchain_fence)));
+		vk_check(vk.create_semaphore(used_device, ref sem_create, zero, ref (frame_ptr->swapchain_sem)));
+	}
+
+	vk_check(vk.create_command_pool(used_device, ref pool_create, zero, ref (scratch.cpool)));
+	cmd_info.commandPool = scratch.cpool;
+	vk_check(vk.allocate_command_buffers(used_device, ref cmd_info, ref (scratch.cmds)));
+
+	vk_check(vk.create_fence(used_device, ref fence_create, zero, ref (scratch.fence)));
+
+	pipeline_layout = impl_initialise_pipeline_layout();
+	impl_vallocator_initial_setup();
+
+	putzstr("using ");
+	putzstr(hardware.name);
+	putchar(10);
+};
+
+impl_initialise_pipeline_layout ::= func( -> u64)
+{
+	bindings : VkDescriptorSetLayoutBinding mut[2];
+	deref(bindings # 0) = VkDescriptorSetLayoutBinding
+	{
+		.binding := 0;
+		.descriptorType := 7; //storage buffer
+		.descriptorCount := 1;
+		.stageFlags := 0x7FFFFFFF;
+		.pImmutableSamplers := zero;
+	};
+	deref(bindings # 1) = VkDescriptorSetLayoutBinding
+	{
+		.binding := 1;
+		.descriptorType := 1; //combined image sampler
+		.descriptorCount := MAX_GLOBAL_IMAGE_COUNT@u32;
+		.stageFlags := 0x7FFFFFFF;
+		.pImmutableSamplers := zero;
+	};
+	bindings_size : u32 := __sizeof(bindings) / __sizeof(deref(bindings # 0));
+
+	flags : s32 mut[2];
+	deref(flags # 0) = 0;
+	deref(flags # 1) =
+		(0x00000004 | //VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT 
+		0x00000001 | //VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT
+		0x00000002 | //VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT
+		0x00000008); //VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT
+	flags_size : u32 := __sizeof(flags) / __sizeof(deref(flags # 0));
+
+	flags_create ::= VkDescriptorSetLayoutBindingFlagsCreateInfo
+	{
+		.sType := 1000161000;
+		.pNext := zero;
+		.bindingCount := flags_size@u32;
+		.pBindingFlags := flags # 0;
+	};
+
+	layout_create ::= VkDescriptorSetLayoutCreateInfo
+	{
+		.sType := 32;
+		.pNext := (ref flags_create)@_;
+		.flags := 0x00000002; //VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT 
+		.bindingCount := bindings_size@u32;
+		.pBindings := bindings # 0;
+	};
+
+	counter : u64 mut;
+	for(counter = 0, counter < frame_overlap, counter = counter + 1)
+	{
+		vk_check(vk.create_descriptor_set_layout(used_device, ref layout_create, zero, set_layouts # counter));
+	}
+
+	create ::= VkPipelineLayoutCreateInfo
+	{
+		.sType := 30;
+		.pNext := zero;
+		.flags := 0;
+		.setLayoutCount := frame_overlap@u32;
+		.pSetLayouts := set_layouts # 0;
+		.pushConstantRangeCount := 0;
+		.pPushConstantRanges := zero;
+	};
+
+	ret : u64 mut;
+	vk_check(vk.create_pipeline_layout(used_device, ref create, zero, ref ret));
+
+	return ret;
+};
+
+impl_fill_hardware_info ::= func(hw : gpu_hardware mut?, pdev : u64, a : arena mut? -> v0)
+{
+	props : VkPhysicalDeviceProperties mut;
+	vk.get_physical_device_properties(pdev, ref props);
+	memprops : VkPhysicalDeviceMemoryProperties mut;
+	vk.get_physical_device_memory_properties(pdev, ref memprops);
+
+	(hw->id) = -1;
+	(hw->native_handle) = pdev;
+	(hw->vram_size_mib) = 0;
+	(hw->target_heap_gpu) = 0;
+	(hw->target_heap_cpu) = 0;
+
+	(hw->type) = (gpu_hardware_type.unknown);
+	if(props.deviceType == 0x01)
+	{
+		(hw->type) = (gpu_hardware_type.igpu);
+	}
+	if(props.deviceType == 0x02)
+	{
+		(hw->type) = (gpu_hardware_type.gpu);
+	}
+	if(props.deviceType == 0x04)
+	{
+		(hw->type) = (gpu_hardware_type.cpu);
+	}
+	counter : u32 mut := 0;
+
+	cur_vk_heap : VkMemoryHeap mut;
+	cur_mem_ty : VkMemoryType mut;
+
+	size_gpu : u64 mut := 0;
+	size_cpu : u64 mut := 0;
+
+	for(counter = 0, counter < (memprops.memoryTypeCount), counter = counter + 1)
+	{
+		cur_mem_ty = deref(memprops.memoryTypes # counter);
+		cur_vk_heap = deref(memprops.memoryHeaps # (cur_mem_ty.heapIndex));
+		if(((cur_mem_ty.propertyFlags) & 0x00000002) != zero) //HOST_VISIBLE
+		{
+			if(size_cpu < (cur_vk_heap.size))
+			{
+				(hw->target_heap_cpu) = counter@_;
+				size_cpu = (cur_vk_heap.size);
+			}
+		}
+		if(((cur_mem_ty.propertyFlags) & 0x00000001) != zero) //DEVICE_LOCAL
+		{
+			if(size_gpu < (cur_vk_heap.size))
+			{
+				(hw->target_heap_gpu) = counter@_;
+				size_gpu = (cur_vk_heap.size);
+			}
+		}
+	}
+	counter = 0;
+	for(counter = 0, counter < (memprops.memoryHeapCount), counter = counter + 1)
+	{
+		cur_vk_heap = deref(memprops.memoryHeaps # counter);
+		(hw->vram_size_mib) = (hw->vram_size_mib) + (cur_vk_heap.size);
+	}
+
+	family_count : u32 mut := 0;
+	vk.get_physical_device_queue_family_properties(pdev, ref family_count, zero);
+	families : VkQueueFamilyProperties mut? := arena_alloc(a, __sizeof(VkQueueFamilyProperties) * family_count);
+	vk.get_physical_device_queue_family_properties(pdev, ref family_count, families);
+
+	cur_fam : VkQueueFamilyProperties mut;
+	for(counter = 0, counter < family_count, counter = counter + 1)
+	{
+		// hw->idx should be set to the first graphics compute queue.
+		cur_fam = deref(families # counter);
+		if((cur_fam.queueFlags) & 0x03)
+		{
+			(hw->id) = counter;
+			counter = family_count;
+		}
+	}
+
+	namelen ::= zstrlen(props.deviceName # 0);
+	hw->name = arena_alloc(a, namelen + 1);
+	memcopy(hw->name, props.deviceName # 0, namelen);
+	deref(hw->name # namelen) = 0;
+};
+

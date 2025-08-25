@@ -1,0 +1,289 @@
+surface : u64 mut := 0;
+swapchain : u64 mut := 0;
+swapchain_width : u64 mut := 0;
+swapchain_height : u64 mut := 0;
+swapchain_image_count : u32 mut;
+swapchain_images : u64 mut? mut;
+swapchain_images_cap : u64 mut := 0;
+swapchain_views : u64 mut? mut;
+swapchain_views_cap : u64 mut := 0;
+swapchain_format ::= 44;
+
+system_image : u64 mut := 0;
+system_image_view : u64 mut := 0;
+system_depth_image : u64 mut := 0;
+system_depth_image_view : u64 mut := 0;
+
+
+impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
+{
+	if(target_window == (window.invalid))
+	{
+		putzstr("one or more GPU passes need access to the swapchain, but no valid window was ever provided via gpu_use_hardware.");
+		__debugbreak();
+	}
+	if(surface == 0)
+	{
+		// create surface.
+		static if(_win32)
+		{
+			create ::= VkWin32SurfaceCreateInfoKHR
+			{
+				.sType := 1000009000;
+				.pNext := zero;
+				.flags := 0;
+				.hinstance := GetModuleHandleA(zero);
+				.hwnd := window_native(target_window);
+			};
+			vk_check(vk.create_win32_surface_khr(vkinst, ref create, zero, ref surface));
+		}
+		static if(_linux)
+		{
+			__error("linux vulkan support NYI");
+		}
+	}
+
+	if(swapchain_width@_ == w)
+	{
+		if(swapchain_height@_ == h)
+		{
+			return false;
+		}
+	}
+
+	putzstr("(re)creating swapchain...");
+	putchar(10);
+
+	caps : VkSurfaceCapabilitiesKHR mut;
+	vk.get_physical_device_surface_capabilities_khr(used_hardware, surface, ref caps);
+
+	swch_create ::= VkSwapchainCreateInfoKHR
+	{
+		.sType := 1000001000;
+		.pNext := zero;
+		.flags := 0;
+		.surface := surface;
+		.minImageCount := 2;
+		.imageFormat := swapchain_format;
+		.imageColorSpace := 0;
+		.imageExtent := VkExtent2D{.width := w@_; .height := h@_;};
+		.imageArrayLayers := 1;
+		.imageUsage := (0x00000010 | 0x00000002);
+		.imageSharingMode := 0;
+		.queueFamilyIndexCount := 1;
+		.pQueueFamilyIndices := ref used_qfi;
+		.preTransform := caps.currentTransform;
+		.compositeAlpha := 0x00000001;
+		// 0 = immediate. fifo (vsync) = 2
+		.presentMode := 2;
+		.clipped := 0;
+		.oldSwapchain := swapchain;
+	};
+	old_swapchain ::= swapchain;
+	vk_check(vk.create_swapchain_khr(used_device, ref swch_create, zero, ref swapchain));
+
+	// todo: destroy old swapchain images if they already existed. right now we arent checking that and are just stomping over swapchain_images and swapchain_views.
+	vk.get_swapchain_images_khr(used_device, swapchain, ref swapchain_image_count, zero);
+	if(swapchain_images_cap != (swapchain_image_count@_))
+	{
+		swapchain_images = arena_alloc(a, __sizeof(u64) * swapchain_image_count);
+		swapchain_images_cap = (swapchain_image_count@_);
+	}
+	if(swapchain_views_cap != (swapchain_image_count@_))
+	{
+		swapchain_views = arena_alloc(a, __sizeof(u64) * swapchain_image_count);
+		swapchain_views_cap = (swapchain_image_count@_);
+	}
+	vk.get_swapchain_images_khr(used_device, swapchain, ref swapchain_image_count, swapchain_images);
+
+	counter : u32 mut;
+	if(old_swapchain != 0)
+	{
+		// we already had a swapchain. we should delete the old images.
+		for(counter = 0, counter < swapchain_image_count, counter = counter + 1)
+		{
+			vk.destroy_image_view(used_device, deref(swapchain_views # counter), zero);
+		}
+		vk.destroy_swapchain_khr(used_device, old_swapchain, zero);
+	}
+
+	view_create : VkImageViewCreateInfo mut := VkImageViewCreateInfo
+	{
+.sType := 15;
+		.pNext := zero;
+		.flags := 0;
+		.image := 0; // note: will overwrite this in coming for-loop.
+		.viewType := 1;
+		.format := swapchain_format;
+		.components := VkComponentMapping
+		{
+			.r := 0;
+			.g := 0;
+			.b := 0;
+			.a := 0;
+		};
+		.subresourceRange := VkImageSubresourceRange
+		{
+			.aspectMask := 0x00000001;
+			.baseMipLevel := 0;
+			.levelCount := 1;
+			.baseArrayLayer := 0;
+			.layerCount := 1;
+		};
+	};
+
+	for(counter = 0, counter < swapchain_image_count, counter = counter + 1)
+	{
+		(view_create.image) = deref(swapchain_images # counter);
+
+		vk_check(vk.create_image_view(used_device, ref view_create, zero, swapchain_views # counter));
+	}
+
+	if(system_image != 0)
+	{
+		// destroy old system image + view if they already exist. i am not bothering rn.
+		vk.destroy_image_view(used_device, system_image_view, zero);
+		vk.destroy_image(used_device, system_image, zero);
+	}
+	system_image_create ::= VkImageCreateInfo
+	{
+		.sType := 14;
+		.pNext := zero;
+		.flags := 0;
+		.imageType := 1;
+		.format := rgba_format;
+		.extent := VkExtent3D
+		{
+			.width := w@_;
+			.height := h@_;
+			.depth := 1;
+		};
+		.mipLevels := 1;
+		.arrayLayers := 1;
+		.samples := 1;
+		.tiling := 0;
+		.usage := (0x00000010) | (0x00000001); // VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+		.sharingMode := 0;
+		.queueFamilyIndexCount := 1;
+		.pQueueFamilyIndices := ref used_qfi;
+		.initialLayout := 0;
+	};
+	vk_check(vk.create_image(used_device, ref system_image_create, zero, ref system_image));
+	
+	if(is_debug_utils_enabled)
+	{
+		system_image_name ::= VkDebugUtilsObjectNameInfoEXT
+		{
+			.sType := 1000128000;
+			.pNext := zero;
+			.objectType := VK_OBJECT_TYPE_IMAGE;
+			.objectHandle := system_image;
+			.pObjectName := "System Image";
+		};
+		vk.set_debug_utils_object_name_ext(used_device, ref system_image_name);
+	}
+
+	impl_bind_image_mem(system_image);
+	view_create.image = system_image;
+	view_create.format = rgba_format;
+	vk_check(vk.create_image_view(used_device, ref view_create, zero, ref system_image_view));
+
+	if(is_debug_utils_enabled)
+	{
+		system_image_view_name ::= VkDebugUtilsObjectNameInfoEXT
+		{
+			.sType := 1000128000;
+			.pNext := zero;
+			.objectType := VK_OBJECT_TYPE_IMAGE_VIEW;
+			.objectHandle := system_image_view;
+			.pObjectName := "System Image View";
+		};
+		vk.set_debug_utils_object_name_ext(used_device, ref system_image_view_name);
+	}
+
+	if(system_depth_image != 0)
+	{
+		vk.destroy_image_view(used_device, system_depth_image_view, zero);
+		vk.destroy_image(used_device, system_depth_image, zero);
+	}
+	system_depth_image_create ::= VkImageCreateInfo
+	{
+		.sType := 14;
+		.pNext := zero;
+		.flags := 0;
+		.imageType := 1;
+		.format := depth_format;
+		.extent := VkExtent3D
+		{
+			.width := w@_;
+			.height := h@_;
+			.depth := 1;
+		};
+		.mipLevels := 1;
+		.arrayLayers := 1;
+		.samples := 1;
+		.tiling := 0;
+		.usage := (0x00000020) | (0x00000001); // VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+		.sharingMode := 0;
+		.queueFamilyIndexCount := 1;
+		.pQueueFamilyIndices := ref used_qfi;
+		.initialLayout := 0;
+	};
+	vk_check(vk.create_image(used_device, ref system_depth_image_create, zero, ref system_depth_image));
+
+	if(is_debug_utils_enabled)
+	{
+		system_depth_image_name ::= VkDebugUtilsObjectNameInfoEXT
+		{
+			.sType := 1000128000;
+			.pNext := zero;
+			.objectType := VK_OBJECT_TYPE_IMAGE;
+			.objectHandle := system_depth_image;
+			.pObjectName := "System Depth Image";
+		};
+		vk.set_debug_utils_object_name_ext(used_device, ref system_depth_image_name);
+	}
+
+	impl_bind_image_mem(system_depth_image);
+	view_create.image = system_depth_image;
+	view_create.format = depth_format;
+	view_create.subresourceRange.aspectMask = 2; // VK_IMAGE_ASPECT_DEPTH_BIT
+	vk_check(vk.create_image_view(used_device, ref view_create, zero, ref system_depth_image_view));
+
+	if(is_debug_utils_enabled)
+	{
+		system_depth_image_view_name ::= VkDebugUtilsObjectNameInfoEXT
+		{
+			.sType := 1000128000;
+			.pNext := zero;
+			.objectType := VK_OBJECT_TYPE_IMAGE_VIEW;
+			.objectHandle := system_depth_image_view;
+			.pObjectName := "System Depth Image View";
+		};
+		vk.set_debug_utils_object_name_ext(used_device, ref system_depth_image_view_name);
+	}
+
+	swapchain_width = w;
+	swapchain_height = h;
+
+	return true;
+};
+
+impl_require_swapchain ::= func(a : arena mut? -> bool)
+{
+	windims ::= window_dimensions(target_window);
+	x ::= deref(windims # 0);
+	y ::= deref(windims # 1);
+	if(x == 0)
+	{
+		swapchain_width = 0;
+		swapchain_height = 0;
+	}
+	if(y == 0)
+	{
+		swapchain_width = 0;
+		swapchain_height = 0;
+	}
+	return impl_need_swapchain(x@_, y@_, a);
+};
+
