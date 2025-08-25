@@ -82,18 +82,7 @@ gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena 
 	memcopy(metabuf_debug_name_str, metabuf_prefix, prefixlen);
 	memcopy(metabuf_debug_name_str # prefixlen, passptr->info.name, namelen);
 
-	if(is_debug_utils_enabled)
-	{
-		debug_name ::= VkDebugUtilsObjectNameInfoEXT
-		{
-			.sType := 1000128000;
-			.pNext := zero;
-			.objectType := VK_OBJECT_TYPE_BUFFER;
-			.objectHandle := passptr->metabuf;
-			.pObjectName := metabuf_debug_name_str;
-		};
-		vk.set_debug_utils_object_name_ext(used_device, ref debug_name);
-	}
+	impl_label_buffer(used_device, passptr->metabuf, metabuf_debug_name_str);
 
 	// create pipeline.
 	if(passptr->is_compute)
@@ -471,28 +460,15 @@ impl_record_gpu_work ::= func(pass : gpu_pass, frame_id : u64, long : arena mut?
 	passptr : pass_data_t mut? := passes # (pass@s64);
 
 	frame ::= deref(frames # frame_id);
-	pass_label ::= VkDebugUtilsLabelEXT
-	{
-		.sType := 1000128002;
-		.pNext := zero;
-		.pLabelName := passptr->info.name;
-		.color := zero;
-	};
-	if(is_debug_utils_enabled)
-	{
-		vk.cmd_begin_debug_utils_label_ext(frame.cmds, ref pass_label);
-	}
+	impl_begin_label(frame.cmds, passptr->info.name);
+	defer impl_end_label(frame.cmds);
 	if(passptr->is_compute)
 	{
 		impl_record_compute_work(passptr, frame_id);
 	}
-	if(!(passptr->is_compute))
+	else
 	{
 		impl_record_graphics_work(passptr, frame_id, long, short);
-	}
-	if(is_debug_utils_enabled)
-	{
-		vk.cmd_end_debug_utils_label_ext(frame.cmds);
 	}
 };
 

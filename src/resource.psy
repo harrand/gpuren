@@ -378,18 +378,7 @@ impl_init_buffer ::= func(resptr : resource_data_t mut?, info : gpu_resource_inf
 	// debug utils naming
 	if(info.name != zero)
 	{
-		if(is_debug_utils_enabled)
-		{
-			debug_name ::= VkDebugUtilsObjectNameInfoEXT
-			{
-				.sType := 1000128000;
-				.pNext := zero;
-				.objectType := VK_OBJECT_TYPE_BUFFER;
-				.objectHandle := resptr->vk_handle;
-				.pObjectName := info.name;
-			};
-			vk.set_debug_utils_object_name_ext(used_device, ref debug_name);
-		}
+		impl_label_buffer(used_device, resptr->vk_handle, info.name);
 	}
 };
 
@@ -507,34 +496,15 @@ impl_init_image ::= func(resptr : resource_data_t mut?, info : gpu_resource_info
 	// debug utils naming
 	if(info.name != zero)
 	{
-		if(is_debug_utils_enabled)
-		{
-			debug_name ::= VkDebugUtilsObjectNameInfoEXT
-			{
-				.sType := 1000128000;
-				.pNext := zero;
-				.objectType := VK_OBJECT_TYPE_IMAGE;
-				.objectHandle := resptr->vk_handle;
-				.pObjectName := info.name;
-			};
-			vk.set_debug_utils_object_name_ext(used_device, ref debug_name);
+		impl_label_image(used_device, resptr->vk_handle, info.name);
 
-			view_prefix ::= "View: ";
-			prefixlen ::= zstrlen(view_prefix);
-			namelen ::= zstrlen(info.name);
-			view_debug_name_str : u8 mut? := arena_alloc(a, prefixlen + namelen);
-			memcopy(view_debug_name_str, view_prefix, prefixlen);
-			memcopy(view_debug_name_str # prefixlen, info.name, namelen);
-			view_debug_name ::= VkDebugUtilsObjectNameInfoEXT
-			{
-				.sType := 1000128000;
-				.pNext := zero;
-				.objectType := VK_OBJECT_TYPE_IMAGE_VIEW;
-				.objectHandle := resptr->image_view;
-				.pObjectName := view_debug_name_str;
-			};
-			vk.set_debug_utils_object_name_ext(used_device, ref view_debug_name);
-		}
+		view_prefix ::= "View: ";
+		prefixlen ::= zstrlen(view_prefix);
+		namelen ::= zstrlen(info.name);
+		view_debug_name_str : u8 mut? := arena_alloc(a, prefixlen + namelen);
+		memcopy(view_debug_name_str, view_prefix, prefixlen);
+		memcopy(view_debug_name_str # prefixlen, info.name, namelen);
+		impl_label_view(used_device, resptr->image_view, view_debug_name_str);
 	}
 };
 

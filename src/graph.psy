@@ -139,17 +139,8 @@ gpu_execute ::= func(graph : gpu_graph, long : arena mut?, short : arena mut? ->
 	// 	3. transition the swapchain image to present_src.
 	if(writes_to_system_image)
 	{
-		blit_label ::= VkDebugUtilsLabelEXT
-		{
-			.sType := 1000128002;
-			.pNext := zero;
-			.pLabelName := "Blit System Image -> Swapchain Image";
-			.color := zero;
-		};
-		if(is_debug_utils_enabled)
-		{
-			vk.cmd_begin_debug_utils_label_ext(frame.cmds, ref blit_label);
-		}
+		impl_begin_label(frame.cmds, "Blit System Image -> Swapchain Image");
+		defer impl_end_label(frame.cmds);
 		blit : VkImageBlit mut := VkImageBlit
 		{
 			.srcSubresource := VkImageSubresourceLayers
@@ -197,11 +188,6 @@ gpu_execute ::= func(graph : gpu_graph, long : arena mut?, short : arena mut? ->
 
 		vk.cmd_pipeline_barrier(frame.cmds, 0x00000400, 0x00001000, 0, 0, zero, 0, zero, 1, ref system_image_transition);
 		vk.cmd_blit_image(frame.cmds, system_image, 6, swapchain_image, 7, 1, ref blit, 0);
-
-		if(is_debug_utils_enabled)
-		{
-			vk.cmd_end_debug_utils_label_ext(frame.cmds);
-		}
 	}
 
 	if(will_present)
