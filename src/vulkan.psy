@@ -1,6 +1,13 @@
-LoadLibraryA ::= func(lpLibFileName : u8? -> u64) := extern;
-FreeLibrary ::= func(hLibModule : u64 -> s32) := extern;
-GetProcAddress ::= func(module : u64, lpProcName : u8? -> u64 weak) := extern;
+static if(_win32)
+{
+	LoadLibraryA ::= func(lpLibFileName : u8? -> u64) := extern;
+	FreeLibrary ::= func(hLibModule : u64 -> s32) := extern;
+	GetProcAddress ::= func(module : u64, lpProcName : u8? -> u64 weak) := extern;
+}
+else
+{
+	__error("psygpu(vulkan) is only supported on windows right now");
+}
 
 // VkResult = s32 weak
 VkApplicationInfo ::= struct
