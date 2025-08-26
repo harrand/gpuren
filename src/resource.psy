@@ -1,3 +1,24 @@
+resource : resource_state mut := zero;
+
+resource_state ::= struct
+{
+	data : resource_data_t mut?;
+	count : u64;
+	cap : u64;
+};
+
+resource_data_t ::= struct
+{
+	info : gpu_resource_info;
+	is_buffer : bool;
+	vk_handle : u64;
+	image_view : u64;
+	sampler : u64;
+	buffer_device_address : u64;
+	mapped_ptr : v0 mut? weak;
+
+};
+
 gpu_buffer_flag ::= enum
 {
 	.none := 0b0000;
@@ -41,24 +62,9 @@ gpu_resource ::= enum
 	.window_resource := -2;
 };
 
-resource_data_t ::= struct
-{
-	info : gpu_resource_info;
-	is_buffer : bool;
-	vk_handle : u64;
-	image_view : u64;
-	sampler : u64;
-	buffer_device_address : u64;
-	mapped_ptr : v0 mut? weak;
-
-};
-resources : resource_data_t mut? mut;
-resource_count : u64 mut := 0;
-resource_cap : u64 mut := 0;
-
 gpu_create_buffer ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource)
 {
-	retid ::= resource_count;
+	retid ::= resource.count;
 	resptr ::= impl_alloc_new_resource(a);
 	impl_init_buffer(resptr, info, a);
 	return retid@gpu_resource;
@@ -66,7 +72,7 @@ gpu_create_buffer ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resou
 
 gpu_create_image ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource)
 {
-	retid ::= resource_count;
+	retid ::= resource.count;
 	resptr ::= impl_alloc_new_resource(a);
 	impl_init_image(resptr, info, a);
 	return retid@gpu_resource;
@@ -75,7 +81,7 @@ gpu_create_image ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resour
 
 gpu_resource_write ::= func(res : gpu_resource, data : v0? weak, data_size : u64, offset : u64 -> v0)
 {
-	resptr ::= (resources # (res@s64));
+	resptr ::= (resource.data # (res@s64));
 	rinfo ::= ref (resptr->info);
 
 	memcopy(rinfo->data, data, data_size);
@@ -89,7 +95,7 @@ gpu_resource_read ::= func(res : gpu_resource, buf : v0? weak, len : u64, offset
 		putzstr("resource read out of range");
 		__debugbreak();
 	}
-	resptr ::= resources # (res@s64);
+	resptr ::= resource.data # (res@s64);
 	rinfo ::= resptr->info;
 	is_dynamic_buffer ::= (((rinfo.buffer_flags) & (gpu_buffer_flag.dynamic)) != zero) && resptr->is_buffer;
 	if(is_dynamic_buffer)
@@ -106,14 +112,14 @@ gpu_resource_read ::= func(res : gpu_resource, buf : v0? weak, len : u64, offset
 
 gpu_resource_size ::= func(res : gpu_resource -> u64)
 {
-	resptr ::= resources # (res@s64);
+	resptr ::= resource.data # (res@s64);
 	rinfo ::= resptr->info;
 	return rinfo.data_size;
 };
 
 gpu_resource_mapping ::= func(res : gpu_resource -> u8 mut?)
 {
-	resptr ::= resources # (res@s64);
+	resptr ::= resource.data # (res@s64);
 	rinfo ::= resptr->info;
 	is_dynamic_buffer ::= (((rinfo.buffer_flags) & (gpu_buffer_flag.dynamic)) != zero) && resptr->is_buffer;
 	if(!is_dynamic_buffer)
@@ -126,7 +132,7 @@ gpu_resource_mapping ::= func(res : gpu_resource -> u8 mut?)
 
 gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena mut?, short : arena mut? -> v0)
 {
-	resptr ::= resources # (res@s64);
+	resptr ::= resource.data # (res@s64);
 	oldinfo ::= resptr->info;
 	olddata ::= oldinfo.data;
 	olddatasize ::= oldinfo.data_size;
@@ -285,7 +291,7 @@ impl_write_resources ::= func(passptr : pass_data_t mut?, long : arena mut?, sho
 		{
 			if(curres != (gpu_resource.window_resource))
 			{
-				resdata = deref (resources # (curres@s64));
+				resdata = deref (resource.data # (curres@s64));
 				if(resdata.is_buffer)
 				{
 					defer bufcount = bufcount + 1;
@@ -510,18 +516,18 @@ impl_init_image ::= func(resptr : resource_data_t mut?, info : gpu_resource_info
 
 impl_alloc_new_resource ::= func(a : arena mut? -> resource_data_t mut?)
 {
-	if(resource_cap == 0)
+	if(resource.cap == 0)
 	{
-		resources = arena_alloc(a, __sizeof(resource_data_t) * 1024);
-		resource_cap = 1024;
+		resource.data = arena_alloc(a, __sizeof(resource_data_t) * 1024);
+		resource.cap = 1024;
 	}
-	if(resource_count > resource_cap)
+	if(resource.count > (resource.cap))
 	{
 		putzstr("ran out of resources. todo: fix this.");
 		__debugbreak();
 	}
-	id ::= resource_count;
-	resource_count = resource_count + 1;
-	return resources # id;
+	id ::= resource.count;
+	resource.count = (resource.count + 1);
+	return resource.data # id;
 };
 

@@ -52,7 +52,7 @@ gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena 
 	cur_resource : resource_data_t mut;
 	for(counter = 0, counter < (info.resources_count), counter = counter + 1)
 	{
-		cur_resource = deref (resources # (deref(info.resources_data # counter)@s64));
+		cur_resource = deref (resource.data # (deref(info.resources_data # counter)@s64));
 		if(cur_resource.is_buffer)
 		{
 			buffer_rescount = buffer_rescount + 1;
@@ -105,7 +105,7 @@ gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena 
 		if((ginfo.draw_buffer) != (gpu_resource.invalid))
 		{
 			drawbuf_handle ::= (ginfo.draw_buffer)@s64;
-			drawbuf : resource_data_t? := resources # drawbuf_handle;
+			drawbuf : resource_data_t? := resource.data # drawbuf_handle;
 			dbinfo ::= drawbuf->info;
 			dbflags ::= dbinfo.buffer_flags;
 			if((dbflags & (gpu_buffer_flag.draw_buffer)) == zero)
@@ -202,7 +202,7 @@ impl_get_pass_colour_target_dimensions ::= func(passptr : pass_data_t? -> u32[2]
 			swapchain_height@_;
 		};
 	}
-	res ::= (resources # (first_colour_target@s64));
+	res ::= (resource.data # (first_colour_target@s64));
 	resinfo ::= res->info;
 	return resinfo.image_dimensions;
 };
@@ -276,7 +276,7 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 		}
 		else
 		{
-			resptr = (resources # (colour_target@s64));
+			resptr = (resource.data # (colour_target@s64));
 			render_target = (resptr->vk_handle);
 			render_target_view = (resptr->image_view);
 		}
@@ -333,7 +333,7 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 		else
 		{
 			// its an actual target
-			depthresptr ::= (resources # (ginfo.depth_target@s64));
+			depthresptr ::= (resource.data # (ginfo.depth_target@s64));
 			depth_target = (depthresptr->vk_handle);
 			depth_target_view = (depthresptr->image_view);
 		}
@@ -428,7 +428,7 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 		}
 		if(drawbuf != (gpu_resource.invalid))
 		{
-			drawbufres = resources # (drawbuf@s64);
+			drawbufres = (resource.data # (drawbuf@s64));
 			drawbufinfo = drawbufres->info;
 			draw_buf_max_size_unindexed ::= ((drawbufinfo.data_size) - __sizeof(u32)) / __sizeof(gpu_draw_command);
 			vk.cmd_draw_indirect_count(frame.cmds, drawbufres->vk_handle, __sizeof(u32), drawbufres->vk_handle, 0, draw_buf_max_size_unindexed@_, __sizeof(gpu_draw_command));
@@ -436,7 +436,7 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 	}
 	if(idxbuf != (gpu_resource.invalid))
 	{
-		idxbufres ::= resources # (idxbuf@s64);
+		idxbufres ::= resource.data # (idxbuf@s64);
 		idxbufinfo ::= idxbufres->info;
 		vk.cmd_bind_index_buffer(frame.cmds, idxbufres->vk_handle, 0, 1);
 		if(drawbuf == (gpu_resource.invalid))
@@ -445,7 +445,7 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 		}
 		if(drawbuf != (gpu_resource.invalid))
 		{
-			drawbufres = resources # (drawbuf@s64);
+			drawbufres = (resource.data # (drawbuf@s64));
 			drawbufinfo = drawbufres->info;
 			draw_buf_max_size_indexed ::= ((drawbufinfo.data_size) - __sizeof(u32)) / __sizeof(gpu_draw_indexed_command);
 			vk.cmd_draw_indexed_indirect_count(frame.cmds, drawbufres->vk_handle, __sizeof(u32), drawbufres->vk_handle, 0, draw_buf_max_size_indexed@_, __sizeof(gpu_draw_indexed_command));

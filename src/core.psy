@@ -259,9 +259,9 @@ gpu_term ::= func( -> v0)
 
 	// destroy all resources.
 	resptr : resource_data_t mut? mut;
-	for(counter = 0, counter < resource_count, counter = counter + 1)
+	for(counter = 0, counter < (resource.count), counter = counter + 1)
 	{
-		resptr = resources # counter;	
+		resptr = (resource.data # counter);	
 		if(resptr->is_buffer)
 		{
 			vk.destroy_buffer(hardware.used_device, resptr->vk_handle, zero);
@@ -275,7 +275,7 @@ gpu_term ::= func( -> v0)
 			(resptr->vk_handle) = 0;
 		}
 	}
-	resource_count = 0;
+	resource.count = 0;
 
 	for(counter = 0, counter < (descriptor.pools_count), counter = counter + 1)
 	{

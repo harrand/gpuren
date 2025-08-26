@@ -92,7 +92,7 @@ impl_populate_descriptors ::= func(passptr : pass_data_t mut?, long : arena mut?
 			}
 			if(cur_resh != (gpu_resource.window_resource))
 			{
-				resptr = resources # (cur_resh@s64);
+				resptr = (resource.data # (cur_resh@s64));
 				if(!(resptr->is_buffer))
 				{
 					image_count = image_count + 1;
@@ -163,7 +163,7 @@ impl_populate_descriptors ::= func(passptr : pass_data_t mut?, long : arena mut?
 			{
 				if(cur_resh != (gpu_resource.window_resource))
 				{
-					resptr = resources # (cur_resh@s64);
+					resptr = (resource.data # (cur_resh@s64));
 					if(!(resptr->is_buffer))
 					{
 						deref(image_writes # img_cursor) = VkDescriptorImageInfo
