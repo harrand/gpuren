@@ -249,13 +249,13 @@ gpu_term ::= func( -> v0)
 
 	// destroy all passes
 	passptr : pass_data_t mut? mut;
-	for(counter = 0, counter < passes_count, counter = counter + 1)
+	for(counter = 0, counter < (pass.count), counter = counter + 1)
 	{
-		passptr = passes # counter;	
+		passptr = pass.data # counter;	
 		vk.destroy_buffer(hardware.used_device, passptr->metabuf, zero);
 		vk.destroy_pipeline(hardware.used_device, passptr->pipeline, zero);
 	}
-	passes_count = 0;
+	pass.count = 0;
 
 	// destroy all resources.
 	resptr : resource_data_t mut? mut;

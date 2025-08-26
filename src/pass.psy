@@ -1,6 +1,11 @@
-passes : pass_data_t mut? mut;
-passes_count : u64 mut := 0;
-passes_cap : u64 mut := 0;
+pass : pass_state mut := zero;
+
+pass_state ::= struct
+{
+	data : pass_data_t mut? mut;
+	count : u64 mut;
+	cap : u64 mut;
+};
 
 // internal pass data.
 pass_data_t ::= struct
@@ -36,7 +41,7 @@ gpu_pass ::= enum
 
 gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena mut? -> gpu_pass)
 {
-	retid ::= passes_count;
+	retid ::= pass.count;
 	passptr ::= impl_alloc_new_pass(long);
 	passptr->info = info;
 	// first thing we need is a metabuffer.
@@ -138,19 +143,19 @@ gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena 
 
 impl_alloc_new_pass ::= func(a : arena mut? -> pass_data_t mut?)
 {
-	if(passes_cap == 0)
+	if(pass.cap == 0)
 	{
-		passes = arena_alloc(a, __sizeof(pass_data_t) * 32);
-		passes_cap = 32;
+		pass.data = arena_alloc(a, __sizeof(pass_data_t) * 32);
+		pass.cap = 32;
 	}
-	if(passes_count > passes_cap)
+	if(pass.count > pass.cap)
 	{
 		putzstr("ran out of pass capacity. todo: fix this.");
 		__debugbreak();
 	}
-	id ::= passes_count;
-	passes_count = passes_count + 1;
-	return passes # id;
+	id ::= pass.count;
+	pass.count = (pass.count + 1);
+	return pass.data # id;
 };
 
 impl_pass_writes_to_system_image ::= func(p : gpu_pass -> bool)
@@ -159,7 +164,7 @@ impl_pass_writes_to_system_image ::= func(p : gpu_pass -> bool)
 	{
 		return false;
 	}
-	passptr ::= (passes # (p@s64));
+	passptr ::= (pass.data # (p@s64));
 	passinfo ::= passptr->info;
 	ginfo ::= passinfo.graphics;
 	counter : u64 mut := 0;
@@ -457,7 +462,7 @@ impl_record_gpu_work ::= func(p : gpu_pass, frame_id : u64, long : arena mut?, s
 	{
 		return;
 	}
-	passptr : pass_data_t mut? := passes # (p@s64);
+	passptr : pass_data_t mut? := pass.data # (p@s64);
 
 	frame ::= deref(core.frames # frame_id);
 	impl_begin_label(frame.cmds, passptr->info.name);
@@ -476,7 +481,7 @@ impl_pass_uses_resource ::= func(p : gpu_pass, res : gpu_resource -> bool)
 {
 	counter : u64 mut;
 	cur_res : gpu_resource mut;
-	passptr : pass_data_t? := passes # (p@s64);
+	passptr : pass_data_t? := pass.data # (p@s64);
 	passinfo ::= passptr->info;
 	cur_residx : u64 mut;
 	for(cur_residx = 0, cur_residx < (passinfo.resources_count), cur_residx = cur_residx + 1)

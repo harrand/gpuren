@@ -159,11 +159,11 @@ gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena mut?
 	// solution:
 	// for all passes, if they contained this buffer, rewrite their metabuffers.
 	counter : u64 mut;
-	for(counter = 0, counter < passes_count, counter = counter + 1)
+	for(counter = 0, counter < (pass.count), counter = counter + 1)
 	{
 		if(impl_pass_uses_resource(counter@s64@gpu_pass, res))
 		{
-			impl_write_resources(passes # counter, long, short);
+			impl_write_resources(pass.data # counter, long, short);
 		}
 	}
 };
