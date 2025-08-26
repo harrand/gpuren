@@ -72,19 +72,19 @@ gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> v0)
 	{
 		// make sure swapchain is available.
 		impl_require_swapchain(long);
-		if(swapchain_width == 0)
+		if(swapchain.width == 0)
 		{
 			return;
 		}
-		if(swapchain_height == 0)
+		if(swapchain.height == 0)
 		{
 			return;
 		}
 
-		vk_check(vk.acquire_next_image_khr(hardware.used_device, swapchain, 9999999999, 0, frame.swapchain_fence, ref image_index));
+		vk_check(vk.acquire_next_image_khr(hardware.used_device, swapchain.handle, 9999999999, 0, frame.swapchain_fence, ref image_index));
 		vk_check(vk.wait_for_fences(hardware.used_device, 1, ref (frame.swapchain_fence), 1, ~0));
 		vk_check(vk.reset_fences(hardware.used_device, 1, ref (frame.swapchain_fence)));
-		swapchain_image = deref(swapchain_images # image_index);
+		swapchain_image = deref(swapchain.images # image_index);
 	}
 
 	barrier : VkImageMemoryBarrier mut := VkImageMemoryBarrier
@@ -169,9 +169,9 @@ gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> v0)
 			.dstOffsets := zero;
 		};
 		deref((blit.srcOffsets) # 0) = VkOffset3D{.x := 0; .y := 0; .z := 0;};
-		deref((blit.srcOffsets) # 1) = VkOffset3D{.x := swapchain_width@_; .y := swapchain_height@_; .z := 1;};
+		deref((blit.srcOffsets) # 1) = VkOffset3D{.x := swapchain.width@_; .y := swapchain.height@_; .z := 1;};
 		deref((blit.dstOffsets) # 0) = VkOffset3D{.x := 0; .y := 0; .z := 0;};
-		deref((blit.dstOffsets) # 1) = VkOffset3D{.x := swapchain_width@_; .y := swapchain_height@_; .z := 1;};
+		deref((blit.dstOffsets) # 1) = VkOffset3D{.x := swapchain.width@_; .y := swapchain.height@_; .z := 1;};
 
 		system_image_transition ::= VkImageMemoryBarrier
 		{
@@ -183,7 +183,7 @@ gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> v0)
 			.newLayout := 6; // VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
 			.srcQueueFamilyIndex := ~0;
 			.dstQueueFamilyIndex := ~0;
-			.image := system_image;
+			.image := swapchain.system_image;
 			.subresourceRange := VkImageSubresourceRange
 			{
 				.aspectMask := 0x00000001;
@@ -195,7 +195,7 @@ gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> v0)
 		};
 
 		vk.cmd_pipeline_barrier(frame.cmds, 0x00000400, 0x00001000, 0, 0, zero, 0, zero, 1, ref system_image_transition);
-		vk.cmd_blit_image(frame.cmds, system_image, 6, swapchain_image, 7, 1, ref blit, 0);
+		vk.cmd_blit_image(frame.cmds, swapchain.system_image, 6, swapchain_image, 7, 1, ref blit, 0);
 	}
 
 	if(will_present)
@@ -236,7 +236,7 @@ gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> v0)
 			.waitSemaphoreCount := 1;
 			.pWaitSemaphores := ref (frame.swapchain_sem);
 			.swapchainCount := 1;
-			.pSwapchains := ref swapchain;
+			.pSwapchains := ref(swapchain.handle);
 			.pImageIndices := ref image_index;
 			.pResults := ref present_res;
 		};

@@ -1,19 +1,23 @@
-surface : u64 mut := 0;
-swapchain : u64 mut := 0;
-swapchain_width : u64 mut := 0;
-swapchain_height : u64 mut := 0;
-swapchain_image_count : u32 mut;
-swapchain_images : u64 mut? mut;
-swapchain_images_cap : u64 mut := 0;
-swapchain_views : u64 mut? mut;
-swapchain_views_cap : u64 mut := 0;
 swapchain_format ::= 44;
+swapchain : swapchain_state mut := zero;
 
-system_image : u64 mut := 0;
-system_image_view : u64 mut := 0;
-system_depth_image : u64 mut := 0;
-system_depth_image_view : u64 mut := 0;
+swapchain_state ::= struct
+{
+	surface : u64;
+	handle : u64;
+	width : u64;
+	height : u64;
+	image_count : u32;
+	images : u64 mut?;
+	images_cap : u64;
+	views : u64 mut?;
+	views_cap : u64;
 
+	system_image : u64;
+	system_image_view : u64;
+	system_depth_image : u64;
+	system_depth_image_view : u64;
+};
 
 impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
 {
@@ -22,7 +26,7 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
 		putzstr("one or more GPU passes need access to the swapchain, but no valid window was ever provided via gpu_use_hardware.");
 		__debugbreak();
 	}
-	if(surface == 0)
+	if(swapchain.surface == 0)
 	{
 		// create surface.
 		static if(_win32)
@@ -35,7 +39,7 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
 				.hinstance := GetModuleHandleA(zero);
 				.hwnd := window_native(core.target_window);
 			};
-			vk_check(vk.create_win32_surface_khr(core.vkinst, ref create, zero, ref surface));
+			vk_check(vk.create_win32_surface_khr(core.vkinst, ref create, zero, ref(swapchain.surface)));
 		}
 		static if(_linux)
 		{
@@ -43,9 +47,9 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
 		}
 	}
 
-	if(swapchain_width@_ == w)
+	if(swapchain.width@_ == w)
 	{
-		if(swapchain_height@_ == h)
+		if(swapchain.height@_ == h)
 		{
 			return false;
 		}
@@ -55,14 +59,14 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
 	putchar(10);
 
 	caps : VkSurfaceCapabilitiesKHR mut;
-	vk.get_physical_device_surface_capabilities_khr(hardware.used_hardware, surface, ref caps);
+	vk.get_physical_device_surface_capabilities_khr(hardware.used_hardware, swapchain.surface, ref caps);
 
 	swch_create ::= VkSwapchainCreateInfoKHR
 	{
 		.sType := 1000001000;
 		.pNext := zero;
 		.flags := 0;
-		.surface := surface;
+		.surface := swapchain.surface;
 		.minImageCount := 2;
 		.imageFormat := swapchain_format;
 		.imageColorSpace := 0;
@@ -77,32 +81,32 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
 		// 0 = immediate. fifo (vsync) = 2
 		.presentMode := 2;
 		.clipped := 0;
-		.oldSwapchain := swapchain;
+		.oldSwapchain := swapchain.handle;
 	};
-	old_swapchain ::= swapchain;
-	vk_check(vk.create_swapchain_khr(hardware.used_device, ref swch_create, zero, ref swapchain));
+	old_swapchain ::= swapchain.handle;
+	vk_check(vk.create_swapchain_khr(hardware.used_device, ref swch_create, zero, ref(swapchain.handle)));
 
 	// todo: destroy old swapchain images if they already existed. right now we arent checking that and are just stomping over swapchain_images and swapchain_views.
-	vk.get_swapchain_images_khr(hardware.used_device, swapchain, ref swapchain_image_count, zero);
-	if(swapchain_images_cap != (swapchain_image_count@_))
+	vk.get_swapchain_images_khr(hardware.used_device, swapchain.handle, ref(swapchain.image_count), zero);
+	if(swapchain.images_cap != (swapchain.image_count@_))
 	{
-		swapchain_images = arena_alloc(a, __sizeof(u64) * swapchain_image_count);
-		swapchain_images_cap = (swapchain_image_count@_);
+		swapchain.images = arena_alloc(a, __sizeof(u64) * (swapchain.image_count));
+		swapchain.images_cap = (swapchain.image_count@_);
 	}
-	if(swapchain_views_cap != (swapchain_image_count@_))
+	if(swapchain.views_cap != (swapchain.image_count@_))
 	{
-		swapchain_views = arena_alloc(a, __sizeof(u64) * swapchain_image_count);
-		swapchain_views_cap = (swapchain_image_count@_);
+		swapchain.views = arena_alloc(a, __sizeof(u64) * swapchain.image_count);
+		swapchain.views_cap = (swapchain.image_count@_);
 	}
-	vk.get_swapchain_images_khr(hardware.used_device, swapchain, ref swapchain_image_count, swapchain_images);
+	vk.get_swapchain_images_khr(hardware.used_device, swapchain.handle, ref(swapchain.image_count), swapchain.images);
 
 	counter : u32 mut;
 	if(old_swapchain != 0)
 	{
 		// we already had a swapchain. we should delete the old images.
-		for(counter = 0, counter < swapchain_image_count, counter = counter + 1)
+		for(counter = 0, counter < (swapchain.image_count), counter = counter + 1)
 		{
-			vk.destroy_image_view(hardware.used_device, deref(swapchain_views # counter), zero);
+			vk.destroy_image_view(hardware.used_device, deref(swapchain.views # counter), zero);
 		}
 		vk.destroy_swapchain_khr(hardware.used_device, old_swapchain, zero);
 	}
@@ -132,18 +136,18 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
 		};
 	};
 
-	for(counter = 0, counter < swapchain_image_count, counter = counter + 1)
+	for(counter = 0, counter < (swapchain.image_count), counter = counter + 1)
 	{
-		(view_create.image) = deref(swapchain_images # counter);
+		(view_create.image) = deref(swapchain.images # counter);
 
-		vk_check(vk.create_image_view(hardware.used_device, ref view_create, zero, swapchain_views # counter));
+		vk_check(vk.create_image_view(hardware.used_device, ref view_create, zero, swapchain.views # counter));
 	}
 
-	if(system_image != 0)
+	if(swapchain.system_image != 0)
 	{
 		// destroy old system image + view if they already exist. i am not bothering rn.
-		vk.destroy_image_view(hardware.used_device, system_image_view, zero);
-		vk.destroy_image(hardware.used_device, system_image, zero);
+		vk.destroy_image_view(hardware.used_device, swapchain.system_image_view, zero);
+		vk.destroy_image(hardware.used_device, swapchain.system_image, zero);
 	}
 	system_image_create ::= VkImageCreateInfo
 	{
@@ -168,19 +172,19 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
 		.pQueueFamilyIndices := ref(hardware.used_qfi);
 		.initialLayout := 0;
 	};
-	vk_check(vk.create_image(hardware.used_device, ref system_image_create, zero, ref system_image));
-	impl_label_image(hardware.used_device, system_image, "System Image");
-	impl_bind_image_mem(system_image);
+	vk_check(vk.create_image(hardware.used_device, ref system_image_create, zero, ref(swapchain.system_image)));
+	impl_label_image(hardware.used_device, swapchain.system_image, "System Image");
+	impl_bind_image_mem(swapchain.system_image);
 
-	view_create.image = system_image;
+	view_create.image = (swapchain.system_image);
 	view_create.format = rgba_format;
-	vk_check(vk.create_image_view(hardware.used_device, ref view_create, zero, ref system_image_view));
-	impl_label_view(hardware.used_device, system_image_view, "System Image View");
+	vk_check(vk.create_image_view(hardware.used_device, ref view_create, zero, ref (swapchain.system_image_view)));
+	impl_label_view(hardware.used_device, swapchain.system_image_view, "System Image View");
 
-	if(system_depth_image != 0)
+	if(swapchain.system_depth_image != 0)
 	{
-		vk.destroy_image_view(hardware.used_device, system_depth_image_view, zero);
-		vk.destroy_image(hardware.used_device, system_depth_image, zero);
+		vk.destroy_image_view(hardware.used_device, swapchain.system_depth_image_view, zero);
+		vk.destroy_image(hardware.used_device, swapchain.system_depth_image, zero);
 	}
 	system_depth_image_create ::= VkImageCreateInfo
 	{
@@ -205,18 +209,18 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
 		.pQueueFamilyIndices := ref(hardware.used_qfi);
 		.initialLayout := 0;
 	};
-	vk_check(vk.create_image(hardware.used_device, ref system_depth_image_create, zero, ref system_depth_image));
-	impl_label_image(hardware.used_device, system_depth_image, "System Depth Image");
-	impl_bind_image_mem(system_depth_image);
+	vk_check(vk.create_image(hardware.used_device, ref system_depth_image_create, zero, ref (swapchain.system_depth_image)));
+	impl_label_image(hardware.used_device, swapchain.system_depth_image, "System Depth Image");
+	impl_bind_image_mem(swapchain.system_depth_image);
 
-	view_create.image = system_depth_image;
+	view_create.image = (swapchain.system_depth_image);
 	view_create.format = depth_format;
 	view_create.subresourceRange.aspectMask = 2; // VK_IMAGE_ASPECT_DEPTH_BIT
-	vk_check(vk.create_image_view(hardware.used_device, ref view_create, zero, ref system_depth_image_view));
-	impl_label_view(hardware.used_device, system_depth_image_view, "System Depth Image View");
+	vk_check(vk.create_image_view(hardware.used_device, ref view_create, zero, ref(swapchain.system_depth_image_view)));
+	impl_label_view(hardware.used_device, swapchain.system_depth_image_view, "System Depth Image View");
 
-	swapchain_width = w;
-	swapchain_height = h;
+	swapchain.width = w;
+	swapchain.height = h;
 	return true;
 };
 
@@ -227,13 +231,13 @@ impl_require_swapchain ::= func(a : arena mut? -> bool)
 	y ::= deref(windims # 1);
 	if(x == 0)
 	{
-		swapchain_width = 0;
-		swapchain_height = 0;
+		swapchain.width = 0;
+		swapchain.height = 0;
 	}
 	if(y == 0)
 	{
-		swapchain_width = 0;
-		swapchain_height = 0;
+		swapchain.width = 0;
+		swapchain.height = 0;
 	}
 	return impl_need_swapchain(x@_, y@_, a);
 };

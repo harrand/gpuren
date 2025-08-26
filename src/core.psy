@@ -216,35 +216,35 @@ gpu_term ::= func( -> v0)
 		vk.destroy_descriptor_set_layout(hardware.used_device, deref(descriptor.set_layouts # counter), zero);
 		deref(descriptor.set_layouts # counter) = 0;
 	}
-	for(counter = 0, counter < (swapchain_image_count@_), counter = counter + 1)
+	for(counter = 0, counter < (swapchain.image_count@_), counter = counter + 1)
 	{
-		vk.destroy_image_view(hardware.used_device, deref(swapchain_views # counter), zero);
+		vk.destroy_image_view(hardware.used_device, deref(swapchain.views # counter), zero);
 	}
-	if(swapchain != 0)
+	if(swapchain.handle != 0)
 	{
-		vk.destroy_swapchain_khr(hardware.used_device, swapchain, zero);
-	}
-
-	if(system_image_view != 0)
-	{
-		vk.destroy_image_view(hardware.used_device, system_image_view, zero);
-		system_image_view = 0;
-	}
-	if(system_image != 0)
-	{
-		vk.destroy_image(hardware.used_device, system_image, zero);
-		system_image = 0;
+		vk.destroy_swapchain_khr(hardware.used_device, swapchain.handle, zero);
 	}
 
-	if(system_depth_image_view != 0)
+	if(swapchain.system_image_view != 0)
 	{
-		vk.destroy_image_view(hardware.used_device, system_depth_image_view, zero);
-		system_depth_image_view = 0;
+		vk.destroy_image_view(hardware.used_device, swapchain.system_image_view, zero);
+		swapchain.system_image_view = 0;
 	}
-	if(system_depth_image != 0)
+	if(swapchain.system_image != 0)
 	{
-		vk.destroy_image(hardware.used_device, system_depth_image, zero);
-		system_depth_image = 0;
+		vk.destroy_image(hardware.used_device, swapchain.system_image, zero);
+		swapchain.system_image = 0;
+	}
+
+	if(swapchain.system_depth_image_view != 0)
+	{
+		vk.destroy_image_view(hardware.used_device, swapchain.system_depth_image_view, zero);
+		swapchain.system_depth_image_view = 0;
+	}
+	if(swapchain.system_depth_image != 0)
+	{
+		vk.destroy_image(hardware.used_device, swapchain.system_depth_image, zero);
+		swapchain.system_depth_image = 0;
 	}
 
 	// destroy all passes
@@ -309,9 +309,9 @@ gpu_term ::= func( -> v0)
 	impl_vallocator_free_all();
 
 	vk.destroy_device(hardware.used_device, zero);
-	if(surface != 0)
+	if(swapchain.surface != 0)
 	{
-		vk.destroy_surface_khr(core.vkinst, surface, zero);
+		vk.destroy_surface_khr(core.vkinst, swapchain.surface, zero);
 	}
 	vk.destroy_instance(core.vkinst, zero);
 	vulkan_term();

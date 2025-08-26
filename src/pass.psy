@@ -198,8 +198,8 @@ impl_get_pass_colour_target_dimensions ::= func(passptr : pass_data_t? -> u32[2]
 	{
 		return u32[2]
 		{
-			swapchain_width@_;
-			swapchain_height@_;
+			swapchain.width@_;
+			swapchain.height@_;
 		};
 	}
 	res ::= (resource.data # (first_colour_target@s64));
@@ -249,11 +249,11 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 		impl_require_swapchain(long);
 
 		dims ::= passptr->colour_target_dimensions;
-		if(deref(dims # 0) != swapchain_width@_)
+		if(deref(dims # 0) != (swapchain.width@_))
 		{
 			(passptr->colour_target_dimensions) = impl_get_pass_colour_target_dimensions(passptr);
 		}
-		if(deref(dims # 1) != swapchain_height@_)
+		if(deref(dims # 1) != (swapchain.height@_))
 		{
 			(passptr->colour_target_dimensions) = impl_get_pass_colour_target_dimensions(passptr);
 		}
@@ -271,8 +271,8 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 		if(colour_target == (gpu_resource.window_resource))
 		{
 			// need a new swapchain!
-			render_target = system_image;
-			render_target_view = system_image_view;
+			render_target = (swapchain.system_image);
+			render_target_view = (swapchain.system_image_view);
 		}
 		else
 		{
@@ -327,8 +327,8 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 		depth_attachment = ref depth_attachment_value;
 		if(ginfo.depth_target == (gpu_resource.window_resource))
 		{
-			depth_target = system_depth_image;
-			depth_target_view = system_depth_image_view;
+			depth_target = (swapchain.system_depth_image);
+			depth_target_view = (swapchain.system_depth_image_view);
 		}
 		else
 		{
