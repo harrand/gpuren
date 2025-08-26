@@ -89,18 +89,18 @@ gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena 
 
 	impl_label_buffer(hardware.used_device, passptr->metabuf, metabuf_debug_name_str);
 
-	// create pipeline.
-	if(passptr->is_compute)
-	{
-		passptr->pipeline = impl_create_compute_pipeline(info.shader, info.compute);
-	}
 
 	passptr->targets_swapchain = false;
 
 	passptr->is_compute = impl_shader_is_compute(info.shader);
 	ginfo ::= info.graphics;
 	cur_colour_target : gpu_resource mut;
-	if(!(passptr->is_compute))
+	// create pipeline.
+	if(passptr->is_compute)
+	{
+		passptr->pipeline = impl_create_compute_pipeline(info.shader, info.compute);
+	}
+	else
 	{
 		if((ginfo.draw_buffer) != (gpu_resource.invalid))
 		{
@@ -426,7 +426,7 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 		{
 			vk.cmd_draw(frame.cmds, (tri_count * 3)@_, 1, 0, 0);
 		}
-		if(drawbuf != (gpu_resource.invalid))
+		else
 		{
 			drawbufres = (resource.data # (drawbuf@s64));
 			drawbufinfo = drawbufres->info;
@@ -443,7 +443,7 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 		{
 			vk.cmd_draw_indexed(frame.cmds, (tri_count * 3)@_, 1, 0, 0, 0);
 		}
-		if(drawbuf != (gpu_resource.invalid))
+		else
 		{
 			drawbufres = (resource.data # (drawbuf@s64));
 			drawbufinfo = drawbufres->info;

@@ -90,7 +90,7 @@ impl_populate_descriptors ::= func(passptr : pass_data_t mut?, long : arena mut?
 			{
 				image_count = image_count + 1;
 			}
-			if(cur_resh != (gpu_resource.window_resource))
+			else
 			{
 				resptr = (resource.data # (cur_resh@s64));
 				if(!(resptr->is_buffer))

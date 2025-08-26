@@ -210,7 +210,7 @@ impl_cpu_gpu_transfer ::= func(dst_gpu_res : u64, dst_gpu_is_buffer : bool, src_
 		};
 		vk.cmd_copy_buffer(core.scratch.cmds, staging, dst_gpu_res, 1, ref bufcpy);
 	}
-	if(!dst_gpu_is_buffer)
+	else
 	{
 		imgcpy ::= VkBufferImageCopy
 		{
@@ -264,7 +264,7 @@ impl_write_a_resource ::= func(resptr : resource_data_t?, size : u64, offset : u
 		mapped_ptr ::= (resptr->mapped_ptr)@u8 mut?;
 		memcopy(mapped_ptr#offset, rinfo.data, size);
 	}
-	if(!is_dynamic_buffer)
+	else
 	{
 		impl_cpu_gpu_transfer(resptr->vk_handle, resptr->is_buffer, rinfo.data, size, rinfo.image_dimensions, offset);
 	}

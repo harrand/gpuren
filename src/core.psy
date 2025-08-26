@@ -267,7 +267,7 @@ gpu_term ::= func( -> v0)
 			vk.destroy_buffer(hardware.used_device, resptr->vk_handle, zero);
 			(resptr->vk_handle) = 0;
 		}
-		if(!(resptr->is_buffer))
+		else
 		{
 			vk.destroy_sampler(hardware.used_device, resptr->sampler, zero);
 			vk.destroy_image_view(hardware.used_device, resptr->image_view, zero);
