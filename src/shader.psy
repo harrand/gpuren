@@ -1,6 +1,11 @@
-shaders : shader_data_t mut? mut;
-shaders_count : u64 mut := 0;
-shaders_cap : u64 mut := 0;
+shader : shader_state mut := zero;
+
+shader_state ::= struct
+{
+	data : shader_data_t mut?;
+	count : u64;
+	cap : u64;
+};
 
 shader_data_t ::= struct
 {
@@ -50,7 +55,7 @@ gpu_load_shader_files ::= func(vertex_spv_path : u8?, fragment_spv_path : u8?, a
 
 gpu_create_graphics_shader ::= func(vertex_source : u8?, vertex_source_len : u64, fragment_source : u8?, fragment_source_len : u64, a : arena mut? -> gpu_shader)
 {
-	retid ::= shaders_count;
+	retid ::= shader.count;
 	resptr ::= impl_alloc_new_shader(a);
 	resptr->is_graphics = true;
 	resptr->compute_module = 0;
@@ -79,7 +84,7 @@ gpu_create_graphics_shader ::= func(vertex_source : u8?, vertex_source_len : u64
 
 gpu_create_compute_shader ::= func(compute_source : u8?, compute_source_len : u64, a : arena mut? -> gpu_shader)
 {
-	retid ::= shaders_count;
+	retid ::= shader.count;
 	resptr ::= impl_alloc_new_shader(a);
 	resptr->is_graphics = false;
 	resptr->vertex_module = 0;
@@ -98,26 +103,26 @@ gpu_create_compute_shader ::= func(compute_source : u8?, compute_source_len : u6
 	return retid@gpu_shader;
 };
 
-impl_shader_is_compute ::= func(shader : gpu_shader -> bool)
+impl_shader_is_compute ::= func(s : gpu_shader -> bool)
 {
-	shadptr ::= (shaders # (shader@s64));
+	shadptr ::= (shader.data # (s@s64));
 	return (shadptr->compute_module) != 0;
 };
 
 impl_alloc_new_shader ::= func(a : arena mut? -> shader_data_t mut?)
 {
-	if(shaders_cap == 0)
+	if(shader.cap == 0)
 	{
-		shaders = arena_alloc(a, __sizeof(shader_data_t) * 32);
-		shaders_cap = 32;
+		shader.data = arena_alloc(a, __sizeof(shader_data_t) * 32);
+		shader.cap = 32;
 	}
-	if(shaders_count > shaders_cap)
+	if(shader.count > (shader.cap))
 	{
 		putzstr("ran out of shader capacity. todo: fix this.");
 		__debugbreak();
 	}
-	id ::= shaders_count;
-	shaders_count = shaders_count + 1;
-	return shaders # id;
+	id ::= shader.count;
+	shader.count = (shader.count + 1);
+	return shader.data # id;
 };
 
