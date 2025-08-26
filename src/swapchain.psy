@@ -17,7 +17,7 @@ system_depth_image_view : u64 mut := 0;
 
 impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
 {
-	if(target_window == (window.invalid))
+	if(core.target_window == (window.invalid))
 	{
 		putzstr("one or more GPU passes need access to the swapchain, but no valid window was ever provided via gpu_use_hardware.");
 		__debugbreak();
@@ -33,9 +33,9 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
 				.pNext := zero;
 				.flags := 0;
 				.hinstance := GetModuleHandleA(zero);
-				.hwnd := window_native(target_window);
+				.hwnd := window_native(core.target_window);
 			};
-			vk_check(vk.create_win32_surface_khr(vkinst, ref create, zero, ref surface));
+			vk_check(vk.create_win32_surface_khr(core.vkinst, ref create, zero, ref surface));
 		}
 		static if(_linux)
 		{
@@ -271,7 +271,7 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
 
 impl_require_swapchain ::= func(a : arena mut? -> bool)
 {
-	windims ::= window_dimensions(target_window);
+	windims ::= window_dimensions(core.target_window);
 	x ::= deref(windims # 0);
 	y ::= deref(windims # 1);
 	if(x == 0)

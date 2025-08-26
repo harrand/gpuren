@@ -56,7 +56,7 @@ gpu_execute ::= func(graph : gpu_graph, long : arena mut?, short : arena mut? ->
 	writes_to_system_image ::= impl_graph_writes_to_system_image(graph);
 	will_present ::= impl_graph_will_present(graph);
 
-	frame ::= deref(frames # current_frame);
+	frame ::= deref(core.frames # (core.current_frame));
 
 	image_index : u32 mut := -1@u32;
 	swapchain_image : u64 mut := 0;
@@ -129,7 +129,7 @@ gpu_execute ::= func(graph : gpu_graph, long : arena mut?, short : arena mut? ->
 		}
 		else
 		{
-			impl_record_gpu_work((cur_entry.handle)@s64@gpu_pass, current_frame, long, short);
+			impl_record_gpu_work((cur_entry.handle)@s64@gpu_pass, core.current_frame, long, short);
 		}
 	}
 
@@ -236,7 +236,7 @@ gpu_execute ::= func(graph : gpu_graph, long : arena mut?, short : arena mut? ->
 		vk_check(present_res);
 	}
 
-	current_frame = ((current_frame + 1) % 2);
+	core.current_frame = ((core.current_frame + 1) % 2);
 };
 
 graph_entry ::= struct

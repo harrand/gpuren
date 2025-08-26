@@ -186,9 +186,9 @@ impl_cpu_gpu_transfer ::= func(dst_gpu_res : u64, dst_gpu_is_buffer : bool, src_
 	staging : u64 mut;
 	vk.create_buffer(used_device, ref staging_create, zero, ref staging);
 	// todo: write to the buffer using map memory.
-	old_cpumem ::= vallocator.buffer_cpu;
+	old_cpumem ::= core.vallocator.buffer_cpu;
 	cursor ::= impl_bind_buffer_mem(staging, src_data_size, false);
-	cpumem ::= vallocator.buffer_cpu;
+	cpumem ::= core.vallocator.buffer_cpu;
 	mapped_ptr ::= (cpumem.mapped_ptr)@u8 mut?;
 	memcopy(mapped_ptr # cursor, src_data, src_data_size);
 
@@ -202,7 +202,7 @@ impl_cpu_gpu_transfer ::= func(dst_gpu_res : u64, dst_gpu_is_buffer : bool, src_
 			.dstOffset := dst_offset@_;
 			.size := src_data_size;
 		};
-		vk.cmd_copy_buffer(scratch.cmds, staging, dst_gpu_res, 1, ref bufcpy);
+		vk.cmd_copy_buffer(core.scratch.cmds, staging, dst_gpu_res, 1, ref bufcpy);
 	}
 	if(!dst_gpu_is_buffer)
 	{
@@ -241,8 +241,8 @@ impl_cpu_gpu_transfer ::= func(dst_gpu_res : u64, dst_gpu_is_buffer : bool, src_
 				.layerCount := 1;
 			};
 		};
-		vk.cmd_pipeline_barrier(scratch.cmds, 0, 0x00001000, 0, 0, zero, 0, zero, 1, ref barrier);
-		vk.cmd_copy_buffer_to_image(scratch.cmds, staging, dst_gpu_res, 7, 1, ref imgcpy);
+		vk.cmd_pipeline_barrier(core.scratch.cmds, 0, 0x00001000, 0, 0, zero, 0, zero, 1, ref barrier);
+		vk.cmd_copy_buffer_to_image(core.scratch.cmds, staging, dst_gpu_res, 7, 1, ref imgcpy);
 	}
 
 	impl_end_and_execute_scratch_commands();
@@ -352,7 +352,7 @@ impl_init_buffer ::= func(resptr : resource_data_t mut?, info : gpu_resource_inf
 	cursor ::= impl_bind_buffer_mem(resptr->vk_handle, info.data_size, !dynamic);
 	if(dynamic)
 	{
-		cpumem ::= vallocator.buffer_cpu;
+		cpumem ::= core.vallocator.buffer_cpu;
 		mapped_ptr ::= (cpumem.mapped_ptr)@u8 mut?;
 		(resptr->mapped_ptr) = (mapped_ptr # cursor)@_;
 	}

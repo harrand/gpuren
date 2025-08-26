@@ -1,16 +1,18 @@
-vkinst : u64 mut;
-current_frame : u64 mut := 0;
-target_window : window mut;
+core : core_state mut := zero;
+
+core_state ::= struct
+{
+	vkinst : u64 mut;
+	current_frame : u64 mut;
+	target_window : window mut;
+	frames : frame_data mut[2] mut;
+	scratch : scratch_data mut;
+	vallocator : vallocator_t mut;
+};
 
 rgba_format ::= 37;
 depth_format ::= 126;
-
 frame_overlap ::= 2;
-frames : frame_data mut[2] mut;
-
-scratch : scratch_data mut;
-
-vallocator : vallocator_t mut;
 valloc_initial_size : u64 static := (32 * 1024 * 1024); // 32 mib
 valloc_t ::= struct
 {
@@ -115,7 +117,7 @@ gpu_init ::= func(info : gpu_appinfo -> v0)
 {
 	GPU_VERSION ::= VK_MAKE_API_VERSION(0, 0, 1, 0);
 	vulkan_init();
-	target_window = window.invalid;
+	core.target_window = window.invalid;
 
 	appinfo ::= VkApplicationInfo
 	{
@@ -168,8 +170,8 @@ gpu_init ::= func(info : gpu_appinfo -> v0)
 		.ppEnabledExtensionNames := (extensions # 0);
 	};
 
-	vk_check(vk.create_instance(ref create, zero, ref vkinst));
-	vulkan_load_functions(vkinst, is_debug_utils_enabled);
+	vk_check(vk.create_instance(ref create, zero, ref(core.vkinst)));
+	vulkan_load_functions(core.vkinst, is_debug_utils_enabled);
 };
 
 gpu_term ::= func( -> v0)
@@ -180,20 +182,20 @@ gpu_term ::= func( -> v0)
 		vk.destroy_pipeline_layout(used_device, pipeline_layout, zero);
 		pipeline_layout = 0;
 	}
-	if(scratch.cpool != 0)
+	if(core.scratch.cpool != 0)
 	{
-		vk.destroy_command_pool(used_device, scratch.cpool, zero);
-		scratch.cpool = 0;
+		vk.destroy_command_pool(used_device, core.scratch.cpool, zero);
+		core.scratch.cpool = 0;
 	}
-	if(scratch.fence != 0)
+	if(core.scratch.fence != 0)
 	{
-		vk.destroy_fence(used_device, scratch.fence, zero);
+		vk.destroy_fence(used_device, core.scratch.fence, zero);
 	}
 	counter : u64 mut;
 	frame_ptr : frame_data mut? mut;
 	for(counter = 0, counter < frame_overlap, counter = counter + 1)
 	{
-		frame_ptr = (frames # counter);
+		frame_ptr = (core.frames # counter);
 		if(frame_ptr->cpool != 0)
 		{
 			vk.destroy_command_pool(used_device, frame_ptr->cpool, zero);
@@ -309,9 +311,9 @@ gpu_term ::= func( -> v0)
 	vk.destroy_device(used_device, zero);
 	if(surface != 0)
 	{
-		vk.destroy_surface_khr(vkinst, surface, zero);
+		vk.destroy_surface_khr(core.vkinst, surface, zero);
 	}
-	vk.destroy_instance(vkinst, zero);
+	vk.destroy_instance(core.vkinst, zero);
 	vulkan_term();
 };
 
@@ -340,16 +342,16 @@ impl_vallocator_initial_setup ::= func( -> v0)
 	};
 
 	// create initial allocations for each case (buffer gpu, image gpu, buffer cpu).
-	bgpu ::= ref(vallocator.buffer_gpu);
+	bgpu ::= ref(core.vallocator.buffer_gpu);
 	vk_check(vk.allocate_memory(used_device, ref gpucreate, zero, ref (bgpu->device_mem)));
 	bgpu->size = valloc_initial_size;
 	bgpu->cursor = 0;
-	igpu ::= ref(vallocator.image_gpu);
+	igpu ::= ref(core.vallocator.image_gpu);
 	vk_check(vk.allocate_memory(used_device, ref gpucreate, zero, ref (igpu->device_mem)));
 	igpu->size = valloc_initial_size;
 	igpu->cursor = 0;
 
-	bcpu ::= ref(vallocator.buffer_cpu);
+	bcpu ::= ref(core.vallocator.buffer_cpu);
 	vk_check(vk.allocate_memory(used_device, ref cpucreate, zero, ref (bcpu->device_mem)));
 	vk_check(vk.map_memory(used_device, bcpu->device_mem, 0, valloc_initial_size, 0, ref (bcpu->mapped_ptr)));
 	
@@ -360,19 +362,19 @@ impl_vallocator_initial_setup ::= func( -> v0)
 
 impl_vallocator_free_all ::= func( -> v0)
 {
-	bgpu ::= vallocator.buffer_gpu;
+	bgpu ::= core.vallocator.buffer_gpu;
 	vk.free_memory(used_device, bgpu.device_mem, zero);
-	igpu ::= vallocator.image_gpu;
+	igpu ::= core.vallocator.image_gpu;
 	vk.free_memory(used_device, igpu.device_mem, zero);
 
-	bcpu ::= vallocator.buffer_cpu;
+	bcpu ::= core.vallocator.buffer_cpu;
 	vk.free_memory(used_device, bcpu.device_mem, zero);
 };
 
 
 impl_bind_image_mem ::= func(image : u64 -> v0)
 {
-	valloc : valloc_t mut? mut := ref (vallocator.image_gpu);
+	valloc : valloc_t mut? mut := ref (core.vallocator.image_gpu);
 
 	memreqs : VkMemoryRequirements mut;
 	vk.get_image_memory_requirements(used_device, image, ref memreqs);
@@ -408,10 +410,10 @@ impl_bind_image_mem ::= func(image : u64 -> v0)
 
 impl_bind_buffer_mem ::= func(buffer : u64, bufsize : u64, gpu_memory : bool -> u64)
 {
-	valloc : valloc_t mut? mut := ref (vallocator.buffer_cpu);
+	valloc : valloc_t mut? mut := ref (core.vallocator.buffer_cpu);
 	if(gpu_memory)
 	{
-		valloc = ref (vallocator.buffer_gpu);
+		valloc = ref(core.vallocator.buffer_gpu);
 	}
 	if((valloc->cursor + bufsize) > (valloc->size))
 	{
@@ -722,12 +724,12 @@ impl_begin_scratch_commands ::= func( -> v0)
 		.pInheritanceInfo := zero;
 	};
 
-	vk_check(vk.begin_command_buffer(scratch.cmds, ref create));
+	vk_check(vk.begin_command_buffer(core.scratch.cmds, ref create));
 };
 
 impl_end_and_execute_scratch_commands ::= func( -> v0)
 {
-	vk_check(vk.end_command_buffer(scratch.cmds));
+	vk_check(vk.end_command_buffer(core.scratch.cmds));
 	submit ::= VkSubmitInfo
 	{
 		.sType := 4;
@@ -736,12 +738,12 @@ impl_end_and_execute_scratch_commands ::= func( -> v0)
 		.pWaitSemaphores := zero;
 		.pWaitDstStageMask := zero;
 		.commandBufferCount := 1;
-		.pCommandBuffers := ref (scratch.cmds);
+		.pCommandBuffers := ref (core.scratch.cmds);
 		.signalSemaphoreCount := 0;
 		.pSignalSemaphores := zero;
 	};
-	vk_check(vk.queue_submit(graphics_queue, 1, ref submit, scratch.fence));
-	vk_check(vk.wait_for_fences(used_device, 1, ref (scratch.fence), 1, -1@u64));
-	vk_check(vk.reset_fences(used_device, 1, ref (scratch.fence)));
+	vk_check(vk.queue_submit(graphics_queue, 1, ref submit, core.scratch.fence));
+	vk_check(vk.wait_for_fences(used_device, 1, ref (core.scratch.fence), 1, -1@u64));
+	vk_check(vk.reset_fences(used_device, 1, ref (core.scratch.fence)));
 };
 

@@ -38,7 +38,7 @@ gpu_hardware ::= struct
 gpu_hardware_count ::= func( -> u64)
 {
 	ret : u32 mut;
-	vk_check(vk.enumerate_physical_devices(vkinst, ref ret, zero));
+	vk_check(vk.enumerate_physical_devices(core.vkinst, ref ret, zero));
 	return ret@_;
 };
 
@@ -47,7 +47,7 @@ gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, a : a
 	// need an array of VkPhysicalDevices for vulkan to write into.
 	pdev_storage : u64 mut? := arena_alloc(a, __sizeof(u64) * array_size);
 	physical_device_count : u32 mut := array_size@_;
-	result ::= vk.enumerate_physical_devices(vkinst, ref physical_device_count, pdev_storage);
+	result ::= vk.enumerate_physical_devices(core.vkinst, ref physical_device_count, pdev_storage);
 	if(result != 0)
 	{
 		return gpu_err.unknown;
@@ -63,7 +63,7 @@ gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, a : a
 
 gpu_use_hardware ::= func(hardware : gpu_hardware, window : window -> v0)
 {
-	target_window = window;
+	core.target_window = window;
 	pdev ::= hardware.native_handle;
 	queue_priority : f32 := 1.0;
 
@@ -296,7 +296,7 @@ gpu_use_hardware ::= func(hardware : gpu_hardware, window : window -> v0)
 
 	for(counter = 0, counter < frame_overlap, counter = counter + 1)
 	{
-		frame_ptr = (frames # counter);
+		frame_ptr = (core.frames # counter);
 		vk_check(vk.create_command_pool(used_device, ref pool_create, zero, ref (frame_ptr->cpool)));
 		cmd_info.commandPool = (frame_ptr->cpool);
 		vk_check(vk.allocate_command_buffers(used_device, ref cmd_info, ref (frame_ptr->cmds)));
@@ -305,11 +305,11 @@ gpu_use_hardware ::= func(hardware : gpu_hardware, window : window -> v0)
 		vk_check(vk.create_semaphore(used_device, ref sem_create, zero, ref (frame_ptr->swapchain_sem)));
 	}
 
-	vk_check(vk.create_command_pool(used_device, ref pool_create, zero, ref (scratch.cpool)));
-	cmd_info.commandPool = scratch.cpool;
-	vk_check(vk.allocate_command_buffers(used_device, ref cmd_info, ref (scratch.cmds)));
+	vk_check(vk.create_command_pool(used_device, ref pool_create, zero, ref (core.scratch.cpool)));
+	cmd_info.commandPool = (core.scratch.cpool);
+	vk_check(vk.allocate_command_buffers(used_device, ref cmd_info, ref (core.scratch.cmds)));
 
-	vk_check(vk.create_fence(used_device, ref fence_create, zero, ref (scratch.fence)));
+	vk_check(vk.create_fence(used_device, ref fence_create, zero, ref (core.scratch.fence)));
 
 	pipeline_layout = impl_initialise_pipeline_layout();
 	impl_vallocator_initial_setup();
