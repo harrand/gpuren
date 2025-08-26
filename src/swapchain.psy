@@ -169,37 +169,13 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
 		.initialLayout := 0;
 	};
 	vk_check(vk.create_image(hardware.used_device, ref system_image_create, zero, ref system_image));
-	
-	if(is_debug_utils_enabled)
-	{
-		system_image_name ::= VkDebugUtilsObjectNameInfoEXT
-		{
-			.sType := 1000128000;
-			.pNext := zero;
-			.objectType := VK_OBJECT_TYPE_IMAGE;
-			.objectHandle := system_image;
-			.pObjectName := "System Image";
-		};
-		vk.set_debug_utils_object_name_ext(hardware.used_device, ref system_image_name);
-	}
-
+	impl_label_image(hardware.used_device, system_image, "System Image");
 	impl_bind_image_mem(system_image);
+
 	view_create.image = system_image;
 	view_create.format = rgba_format;
 	vk_check(vk.create_image_view(hardware.used_device, ref view_create, zero, ref system_image_view));
-
-	if(is_debug_utils_enabled)
-	{
-		system_image_view_name ::= VkDebugUtilsObjectNameInfoEXT
-		{
-			.sType := 1000128000;
-			.pNext := zero;
-			.objectType := VK_OBJECT_TYPE_IMAGE_VIEW;
-			.objectHandle := system_image_view;
-			.pObjectName := "System Image View";
-		};
-		vk.set_debug_utils_object_name_ext(hardware.used_device, ref system_image_view_name);
-	}
+	impl_label_view(hardware.used_device, system_image_view, "System Image View");
 
 	if(system_depth_image != 0)
 	{
@@ -230,42 +206,17 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
 		.initialLayout := 0;
 	};
 	vk_check(vk.create_image(hardware.used_device, ref system_depth_image_create, zero, ref system_depth_image));
-
-	if(is_debug_utils_enabled)
-	{
-		system_depth_image_name ::= VkDebugUtilsObjectNameInfoEXT
-		{
-			.sType := 1000128000;
-			.pNext := zero;
-			.objectType := VK_OBJECT_TYPE_IMAGE;
-			.objectHandle := system_depth_image;
-			.pObjectName := "System Depth Image";
-		};
-		vk.set_debug_utils_object_name_ext(hardware.used_device, ref system_depth_image_name);
-	}
-
+	impl_label_image(hardware.used_device, system_depth_image, "System Depth Image");
 	impl_bind_image_mem(system_depth_image);
+
 	view_create.image = system_depth_image;
 	view_create.format = depth_format;
 	view_create.subresourceRange.aspectMask = 2; // VK_IMAGE_ASPECT_DEPTH_BIT
 	vk_check(vk.create_image_view(hardware.used_device, ref view_create, zero, ref system_depth_image_view));
-
-	if(is_debug_utils_enabled)
-	{
-		system_depth_image_view_name ::= VkDebugUtilsObjectNameInfoEXT
-		{
-			.sType := 1000128000;
-			.pNext := zero;
-			.objectType := VK_OBJECT_TYPE_IMAGE_VIEW;
-			.objectHandle := system_depth_image_view;
-			.pObjectName := "System Depth Image View";
-		};
-		vk.set_debug_utils_object_name_ext(hardware.used_device, ref system_depth_image_view_name);
-	}
+	impl_label_view(hardware.used_device, system_depth_image_view, "System Depth Image View");
 
 	swapchain_width = w;
 	swapchain_height = h;
-
 	return true;
 };
 
