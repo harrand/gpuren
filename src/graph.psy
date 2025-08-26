@@ -81,9 +81,9 @@ gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> v0)
 			return;
 		}
 
-		vk_check(vk.acquire_next_image_khr(used_device, swapchain, 9999999999, 0, frame.swapchain_fence, ref image_index));
-		vk_check(vk.wait_for_fences(used_device, 1, ref (frame.swapchain_fence), 1, ~0));
-		vk_check(vk.reset_fences(used_device, 1, ref (frame.swapchain_fence)));
+		vk_check(vk.acquire_next_image_khr(hardware.used_device, swapchain, 9999999999, 0, frame.swapchain_fence, ref image_index));
+		vk_check(vk.wait_for_fences(hardware.used_device, 1, ref (frame.swapchain_fence), 1, ~0));
+		vk_check(vk.reset_fences(hardware.used_device, 1, ref (frame.swapchain_fence)));
 		swapchain_image = deref(swapchain_images # image_index);
 	}
 
@@ -221,9 +221,9 @@ gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> v0)
 		.signalSemaphoreCount := 1;
 		.pSignalSemaphores := ref (frame.swapchain_sem);
 	};
-	vk_check(vk.queue_submit(graphics_queue, 1, ref submit, frame.swapchain_fence));
-	vk_check(vk.wait_for_fences(used_device, 1, ref (frame.swapchain_fence), 1, -1@u64));
-	vk_check(vk.reset_fences(used_device, 1, ref (frame.swapchain_fence)));
+	vk_check(vk.queue_submit(hardware.graphics_queue, 1, ref submit, frame.swapchain_fence));
+	vk_check(vk.wait_for_fences(hardware.used_device, 1, ref (frame.swapchain_fence), 1, -1@u64));
+	vk_check(vk.reset_fences(hardware.used_device, 1, ref (frame.swapchain_fence)));
 
 	// present if we need to.
 	present_res : s32 mut;
@@ -240,7 +240,7 @@ gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> v0)
 			.pImageIndices := ref image_index;
 			.pResults := ref present_res;
 		};
-		vk_check(vk.queue_present_khr(graphics_queue, ref present));
+		vk_check(vk.queue_present_khr(hardware.graphics_queue, ref present));
 		vk_check(present_res);
 	}
 

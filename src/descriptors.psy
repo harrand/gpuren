@@ -38,7 +38,7 @@ impl_new_descriptor_pool ::= func(a : arena mut? -> u64)
 		.pPoolSizes := ref image_limit;
 	};
 	newpool : u64 mut;
-	vk_check(vk.create_descriptor_pool(used_device, ref create, zero, ref newpool));
+	vk_check(vk.create_descriptor_pool(hardware.used_device, ref create, zero, ref newpool));
 	deref(descriptor.pools_data # (descriptor.pools_count)) = newpool;
 	descriptor.pools_count = (descriptor.pools_count + 1);
 	return newpool;
@@ -65,7 +65,7 @@ impl_try_allocate_descriptors ::= func(pool : u64, sets_data : u64 mut?, image_c
 		.descriptorSetCount := 2;
 		.pSetLayouts := descriptor.set_layouts # 0;
 	};
-	return (vk.allocate_descriptor_sets(used_device, ref alloc, sets_data)) == 0;
+	return (vk.allocate_descriptor_sets(hardware.used_device, ref alloc, sets_data)) == 0;
 };
 
 impl_populate_descriptors ::= func(passptr : pass_data_t mut?, long : arena mut?, short : arena mut? -> v0)
@@ -197,6 +197,6 @@ impl_populate_descriptors ::= func(passptr : pass_data_t mut?, long : arena mut?
 	{
 		write_count = 2;
 	}
-	vk.update_descriptor_sets(used_device, write_count, descriptor_writes # 0, 0, zero);
+	vk.update_descriptor_sets(hardware.used_device, write_count, descriptor_writes # 0, 0, zero);
 };
 

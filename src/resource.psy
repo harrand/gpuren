@@ -135,8 +135,8 @@ gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena mut?
 		return;
 	}
 
-	vk.device_wait_idle(used_device);
-	vk.destroy_buffer(used_device, resptr->vk_handle, zero);
+	vk.device_wait_idle(hardware.used_device);
+	vk.destroy_buffer(hardware.used_device, resptr->vk_handle, zero);
 
 	if(new_size > olddatasize)
 	{
@@ -170,7 +170,7 @@ gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena mut?
 
 impl_cpu_gpu_transfer ::= func(dst_gpu_res : u64, dst_gpu_is_buffer : bool, src_data : u8? weak, src_data_size : u64, image_dimensions : u32[2], dst_offset : u64 -> v0)
 {
-	vk.device_wait_idle(used_device);
+	vk.device_wait_idle(hardware.used_device);
 	impl_begin_scratch_commands();
 	staging_create ::= VkBufferCreateInfo
 	{
@@ -181,10 +181,10 @@ impl_cpu_gpu_transfer ::= func(dst_gpu_res : u64, dst_gpu_is_buffer : bool, src_
 		.usage := 0x00000001; //VK_BUFFER_USAGE_TRANSFER_SRC_BIT
 		.sharingMode := 0;
 		.queueFamilyIndexCount := 1;
-		.pQueueFamilyIndices := ref used_qfi;
+		.pQueueFamilyIndices := ref(hardware.used_qfi);
 	};
 	staging : u64 mut;
-	vk.create_buffer(used_device, ref staging_create, zero, ref staging);
+	vk.create_buffer(hardware.used_device, ref staging_create, zero, ref staging);
 	// todo: write to the buffer using map memory.
 	old_cpumem ::= core.vallocator.buffer_cpu;
 	cursor ::= impl_bind_buffer_mem(staging, src_data_size, false);
@@ -246,7 +246,7 @@ impl_cpu_gpu_transfer ::= func(dst_gpu_res : u64, dst_gpu_is_buffer : bool, src_
 	}
 
 	impl_end_and_execute_scratch_commands();
-	vk.destroy_buffer(used_device, staging, zero);
+	vk.destroy_buffer(hardware.used_device, staging, zero);
 };
 
 impl_write_a_resource ::= func(resptr : resource_data_t?, size : u64, offset : u64 -> v0)
@@ -327,7 +327,7 @@ impl_init_buffer ::= func(resptr : resource_data_t mut?, info : gpu_resource_inf
 		.usage := (0x00000020 | 0x00020000);
 		.sharingMode := 0;
 		.queueFamilyIndexCount := 1;
-		.pQueueFamilyIndices := ref used_qfi;
+		.pQueueFamilyIndices := ref(hardware.used_qfi);
 	};
 	dynamic ::= ((info.buffer_flags) & (gpu_buffer_flag.dynamic)) != zero;
 	if(!dynamic)
@@ -342,7 +342,7 @@ impl_init_buffer ::= func(resptr : resource_data_t mut?, info : gpu_resource_inf
 	{
 		create.usage = (create.usage) | 0x00000100;
 	}
-	vk_check(vk.create_buffer(used_device, ref create, zero, ref (resptr->vk_handle)));
+	vk_check(vk.create_buffer(hardware.used_device, ref create, zero, ref (resptr->vk_handle)));
 	bda ::= VkBufferDeviceAddressInfo
 	{
 		.sType := 1000244001;
@@ -356,7 +356,7 @@ impl_init_buffer ::= func(resptr : resource_data_t mut?, info : gpu_resource_inf
 		mapped_ptr ::= (cpumem.mapped_ptr)@u8 mut?;
 		(resptr->mapped_ptr) = (mapped_ptr # cursor)@_;
 	}
-	tmp_bda ::= vk.get_buffer_device_address(used_device, ref bda);
+	tmp_bda ::= vk.get_buffer_device_address(hardware.used_device, ref bda);
 	(resptr->buffer_device_address) = tmp_bda;
 
 	// make a copy of the resource data using the arena.
@@ -378,7 +378,7 @@ impl_init_buffer ::= func(resptr : resource_data_t mut?, info : gpu_resource_inf
 	// debug utils naming
 	if(info.name != zero)
 	{
-		impl_label_buffer(used_device, resptr->vk_handle, info.name);
+		impl_label_buffer(hardware.used_device, resptr->vk_handle, info.name);
 	}
 };
 
@@ -421,10 +421,10 @@ impl_init_image ::= func(resptr : resource_data_t mut?, info : gpu_resource_info
 		.usage := (0x00000004 | 0x00000002); // VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT 
 		.sharingMode := 0;
 		.queueFamilyIndexCount := 1;
-		.pQueueFamilyIndices := ref used_qfi;
+		.pQueueFamilyIndices := ref(hardware.used_qfi);
 		.initialLayout := 0;
 	};
-	vk_check(vk.create_image(used_device, ref create, zero, ref (resptr->vk_handle)));
+	vk_check(vk.create_image(hardware.used_device, ref create, zero, ref (resptr->vk_handle)));
 	impl_bind_image_mem(resptr->vk_handle);
 
 	view_create ::= VkImageViewCreateInfo
@@ -452,7 +452,7 @@ impl_init_image ::= func(resptr : resource_data_t mut?, info : gpu_resource_info
 		};
 	};
 
-	vk_check(vk.create_image_view(used_device, ref view_create, zero, ref (resptr->image_view)));
+	vk_check(vk.create_image_view(hardware.used_device, ref view_create, zero, ref (resptr->image_view)));
 
 	sampler_create ::= VkSamplerCreateInfo
 	{
@@ -475,7 +475,7 @@ impl_init_image ::= func(resptr : resource_data_t mut?, info : gpu_resource_info
 		.borderColor := 3;
 		.unnormalizedCoordinates := 0;
 	};
-	vk_check(vk.create_sampler(used_device, ref sampler_create, zero, ref (resptr->sampler)));
+	vk_check(vk.create_sampler(hardware.used_device, ref sampler_create, zero, ref (resptr->sampler)));
 
 	// make a copy of the resource data using the arena.
 	resinfo ::= ref(resptr->info);
@@ -496,7 +496,7 @@ impl_init_image ::= func(resptr : resource_data_t mut?, info : gpu_resource_info
 	// debug utils naming
 	if(info.name != zero)
 	{
-		impl_label_image(used_device, resptr->vk_handle, info.name);
+		impl_label_image(hardware.used_device, resptr->vk_handle, info.name);
 
 		view_prefix ::= "View: ";
 		prefixlen ::= zstrlen(view_prefix);
@@ -504,7 +504,7 @@ impl_init_image ::= func(resptr : resource_data_t mut?, info : gpu_resource_info
 		view_debug_name_str : u8 mut? := arena_alloc(a, prefixlen + namelen);
 		memcopy(view_debug_name_str, view_prefix, prefixlen);
 		memcopy(view_debug_name_str # prefixlen, info.name, namelen);
-		impl_label_view(used_device, resptr->image_view, view_debug_name_str);
+		impl_label_view(hardware.used_device, resptr->image_view, view_debug_name_str);
 	}
 };
 

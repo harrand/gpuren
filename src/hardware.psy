@@ -1,12 +1,18 @@
-used_device : u64 mut;
-used_hardware : u64 mut;
-used_qfi : u32 mut;
-used_mti_gpu : u32 mut;
-used_mti_cpu : u32 mut;
-graphics_queue : u64 mut;
-compute_queue : u64 mut;
+hardware : hardware_state mut := zero;
 
-pipeline_layout : u64 mut;
+hardware_state ::= struct
+{
+	used_device : u64;
+	used_hardware : u64;
+	used_qfi : u32;
+	used_mti_gpu : u32;
+	used_mti_cpu : u32;
+	graphics_queue : u64;
+	compute_queue : u64;
+
+	pipeline_layout : u64;
+};
+
 gpu_hardware_type ::= enum
 {
 	.gpu := 0;
@@ -61,10 +67,10 @@ gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, a : a
 	return gpu_err.none;
 };
 
-gpu_use_hardware ::= func(hardware : gpu_hardware, window : window -> v0)
+gpu_use_hardware ::= func(hw : gpu_hardware, window : window -> v0)
 {
 	core.target_window = window;
-	pdev ::= hardware.native_handle;
+	pdev ::= hw.native_handle;
 	queue_priority : f32 := 1.0;
 
 	qcreate ::= VkDeviceQueueCreateInfo
@@ -72,7 +78,7 @@ gpu_use_hardware ::= func(hardware : gpu_hardware, window : window -> v0)
 		.sType := 2;
 		.pNext := zero;
 		.flags := 0;
-		.queueFamilyIndex := hardware.id;
+		.queueFamilyIndex := hw.id;
 		.queueCount := 1;
 		.pQueuePriorities := ref queue_priority;
 	};
@@ -251,21 +257,21 @@ gpu_use_hardware ::= func(hardware : gpu_hardware, window : window -> v0)
 		.pEnabledFeatures := zero;
 	};
 
-	vk_check(vk.create_device(pdev, ref create, zero, ref used_device));
-	used_hardware = pdev;
-	used_qfi = (hardware.id);
-	used_mti_gpu = (hardware.target_heap_gpu)@_;
-	used_mti_cpu = (hardware.target_heap_cpu)@_;
+	vk_check(vk.create_device(pdev, ref create, zero, ref(hardware.used_device)));
+	hardware.used_hardware = pdev;
+	hardware.used_qfi = (hw.id);
+	hardware.used_mti_gpu = (hw.target_heap_gpu)@_;
+	hardware.used_mti_cpu = (hw.target_heap_cpu)@_;
 
-	vk.get_device_queue(used_device, used_qfi, 0, ref graphics_queue);
-	vk.get_device_queue(used_device, used_qfi, 0, ref compute_queue);
+	vk.get_device_queue(hardware.used_device, hardware.used_qfi, 0, ref(hardware.graphics_queue));
+	vk.get_device_queue(hardware.used_device, hardware.used_qfi, 0, ref(hardware.compute_queue));
 
 	pool_create ::= VkCommandPoolCreateInfo
 	{
 		.sType := 39;
 		.pNext := zero;
 		.flags := 0x02;
-		.queueFamilyIndex := used_qfi;
+		.queueFamilyIndex := hardware.used_qfi;
 	};
 	
 	counter : u64 mut := 0;
@@ -297,25 +303,25 @@ gpu_use_hardware ::= func(hardware : gpu_hardware, window : window -> v0)
 	for(counter = 0, counter < frame_overlap, counter = counter + 1)
 	{
 		frame_ptr = (core.frames # counter);
-		vk_check(vk.create_command_pool(used_device, ref pool_create, zero, ref (frame_ptr->cpool)));
+		vk_check(vk.create_command_pool(hardware.used_device, ref pool_create, zero, ref (frame_ptr->cpool)));
 		cmd_info.commandPool = (frame_ptr->cpool);
-		vk_check(vk.allocate_command_buffers(used_device, ref cmd_info, ref (frame_ptr->cmds)));
+		vk_check(vk.allocate_command_buffers(hardware.used_device, ref cmd_info, ref (frame_ptr->cmds)));
 
-		vk_check(vk.create_fence(used_device, ref fence_create, zero, ref (frame_ptr->swapchain_fence)));
-		vk_check(vk.create_semaphore(used_device, ref sem_create, zero, ref (frame_ptr->swapchain_sem)));
+		vk_check(vk.create_fence(hardware.used_device, ref fence_create, zero, ref (frame_ptr->swapchain_fence)));
+		vk_check(vk.create_semaphore(hardware.used_device, ref sem_create, zero, ref (frame_ptr->swapchain_sem)));
 	}
 
-	vk_check(vk.create_command_pool(used_device, ref pool_create, zero, ref (core.scratch.cpool)));
+	vk_check(vk.create_command_pool(hardware.used_device, ref pool_create, zero, ref (core.scratch.cpool)));
 	cmd_info.commandPool = (core.scratch.cpool);
-	vk_check(vk.allocate_command_buffers(used_device, ref cmd_info, ref (core.scratch.cmds)));
+	vk_check(vk.allocate_command_buffers(hardware.used_device, ref cmd_info, ref (core.scratch.cmds)));
 
-	vk_check(vk.create_fence(used_device, ref fence_create, zero, ref (core.scratch.fence)));
+	vk_check(vk.create_fence(hardware.used_device, ref fence_create, zero, ref (core.scratch.fence)));
 
-	pipeline_layout = impl_initialise_pipeline_layout();
+	hardware.pipeline_layout = impl_initialise_pipeline_layout();
 	impl_vallocator_initial_setup();
 
 	putzstr("using ");
-	putzstr(hardware.name);
+	putzstr(hw.name);
 	putchar(10);
 };
 
@@ -369,7 +375,7 @@ impl_initialise_pipeline_layout ::= func( -> u64)
 	counter : u64 mut;
 	for(counter = 0, counter < frame_overlap, counter = counter + 1)
 	{
-		vk_check(vk.create_descriptor_set_layout(used_device, ref layout_create, zero, descriptor.set_layouts # counter));
+		vk_check(vk.create_descriptor_set_layout(hardware.used_device, ref layout_create, zero, descriptor.set_layouts # counter));
 	}
 
 	create ::= VkPipelineLayoutCreateInfo
@@ -384,7 +390,7 @@ impl_initialise_pipeline_layout ::= func( -> u64)
 	};
 
 	ret : u64 mut;
-	vk_check(vk.create_pipeline_layout(used_device, ref create, zero, ref ret));
+	vk_check(vk.create_pipeline_layout(hardware.used_device, ref create, zero, ref ret));
 
 	return ret;
 };

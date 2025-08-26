@@ -176,20 +176,20 @@ gpu_init ::= func(info : gpu_appinfo -> v0)
 
 gpu_term ::= func( -> v0)
 {
-	vk.device_wait_idle(used_device);
-	if(pipeline_layout != 0)
+	vk.device_wait_idle(hardware.used_device);
+	if(hardware.pipeline_layout != 0)
 	{
-		vk.destroy_pipeline_layout(used_device, pipeline_layout, zero);
-		pipeline_layout = 0;
+		vk.destroy_pipeline_layout(hardware.used_device, hardware.pipeline_layout, zero);
+		hardware.pipeline_layout = 0;
 	}
 	if(core.scratch.cpool != 0)
 	{
-		vk.destroy_command_pool(used_device, core.scratch.cpool, zero);
+		vk.destroy_command_pool(hardware.used_device, core.scratch.cpool, zero);
 		core.scratch.cpool = 0;
 	}
 	if(core.scratch.fence != 0)
 	{
-		vk.destroy_fence(used_device, core.scratch.fence, zero);
+		vk.destroy_fence(hardware.used_device, core.scratch.fence, zero);
 	}
 	counter : u64 mut;
 	frame_ptr : frame_data mut? mut;
@@ -198,52 +198,52 @@ gpu_term ::= func( -> v0)
 		frame_ptr = (core.frames # counter);
 		if(frame_ptr->cpool != 0)
 		{
-			vk.destroy_command_pool(used_device, frame_ptr->cpool, zero);
+			vk.destroy_command_pool(hardware.used_device, frame_ptr->cpool, zero);
 			(frame_ptr->cpool) = 0;
 		}
 		if(frame_ptr->swapchain_fence != 0)
 		{
-			vk.destroy_fence(used_device, frame_ptr->swapchain_fence, zero);
+			vk.destroy_fence(hardware.used_device, frame_ptr->swapchain_fence, zero);
 			(frame_ptr->swapchain_fence) = 0;
 		}
 		if(frame_ptr->swapchain_sem != 0)
 		{
-			vk.destroy_semaphore(used_device, frame_ptr->swapchain_sem, zero);
+			vk.destroy_semaphore(hardware.used_device, frame_ptr->swapchain_sem, zero);
 			(frame_ptr->swapchain_sem) = 0;
 		}
 
 		// dont forget descriptor layouts.
-		vk.destroy_descriptor_set_layout(used_device, deref(descriptor.set_layouts # counter), zero);
+		vk.destroy_descriptor_set_layout(hardware.used_device, deref(descriptor.set_layouts # counter), zero);
 		deref(descriptor.set_layouts # counter) = 0;
 	}
 	for(counter = 0, counter < (swapchain_image_count@_), counter = counter + 1)
 	{
-		vk.destroy_image_view(used_device, deref(swapchain_views # counter), zero);
+		vk.destroy_image_view(hardware.used_device, deref(swapchain_views # counter), zero);
 	}
 	if(swapchain != 0)
 	{
-		vk.destroy_swapchain_khr(used_device, swapchain, zero);
+		vk.destroy_swapchain_khr(hardware.used_device, swapchain, zero);
 	}
 
 	if(system_image_view != 0)
 	{
-		vk.destroy_image_view(used_device, system_image_view, zero);
+		vk.destroy_image_view(hardware.used_device, system_image_view, zero);
 		system_image_view = 0;
 	}
 	if(system_image != 0)
 	{
-		vk.destroy_image(used_device, system_image, zero);
+		vk.destroy_image(hardware.used_device, system_image, zero);
 		system_image = 0;
 	}
 
 	if(system_depth_image_view != 0)
 	{
-		vk.destroy_image_view(used_device, system_depth_image_view, zero);
+		vk.destroy_image_view(hardware.used_device, system_depth_image_view, zero);
 		system_depth_image_view = 0;
 	}
 	if(system_depth_image != 0)
 	{
-		vk.destroy_image(used_device, system_depth_image, zero);
+		vk.destroy_image(hardware.used_device, system_depth_image, zero);
 		system_depth_image = 0;
 	}
 
@@ -252,8 +252,8 @@ gpu_term ::= func( -> v0)
 	for(counter = 0, counter < passes_count, counter = counter + 1)
 	{
 		passptr = passes # counter;	
-		vk.destroy_buffer(used_device, passptr->metabuf, zero);
-		vk.destroy_pipeline(used_device, passptr->pipeline, zero);
+		vk.destroy_buffer(hardware.used_device, passptr->metabuf, zero);
+		vk.destroy_pipeline(hardware.used_device, passptr->pipeline, zero);
 	}
 	passes_count = 0;
 
@@ -264,14 +264,14 @@ gpu_term ::= func( -> v0)
 		resptr = resources # counter;	
 		if(resptr->is_buffer)
 		{
-			vk.destroy_buffer(used_device, resptr->vk_handle, zero);
+			vk.destroy_buffer(hardware.used_device, resptr->vk_handle, zero);
 			(resptr->vk_handle) = 0;
 		}
 		if(!(resptr->is_buffer))
 		{
-			vk.destroy_sampler(used_device, resptr->sampler, zero);
-			vk.destroy_image_view(used_device, resptr->image_view, zero);
-			vk.destroy_image(used_device, resptr->vk_handle, zero);
+			vk.destroy_sampler(hardware.used_device, resptr->sampler, zero);
+			vk.destroy_image_view(hardware.used_device, resptr->image_view, zero);
+			vk.destroy_image(hardware.used_device, resptr->vk_handle, zero);
 			(resptr->vk_handle) = 0;
 		}
 	}
@@ -279,7 +279,7 @@ gpu_term ::= func( -> v0)
 
 	for(counter = 0, counter < (descriptor.pools_count), counter = counter + 1)
 	{
-		vk.destroy_descriptor_pool(used_device, deref(descriptor.pools_data # counter), zero);
+		vk.destroy_descriptor_pool(hardware.used_device, deref(descriptor.pools_data # counter), zero);
 	}
 	descriptor.pools_count = 0;
 
@@ -290,17 +290,17 @@ gpu_term ::= func( -> v0)
 		shad = shaders # counter;	
 		if(shad->vertex_module != 0)
 		{
-			vk.destroy_shader_module(used_device, shad->vertex_module, zero);
+			vk.destroy_shader_module(hardware.used_device, shad->vertex_module, zero);
 			shad->vertex_module = 0;
 		}
 		if(shad->fragment_module != 0)
 		{
-			vk.destroy_shader_module(used_device, shad->fragment_module, zero);
+			vk.destroy_shader_module(hardware.used_device, shad->fragment_module, zero);
 			shad->fragment_module = 0;
 		}
 		if(shad->compute_module != 0)
 		{
-			vk.destroy_shader_module(used_device, shad->compute_module, zero);
+			vk.destroy_shader_module(hardware.used_device, shad->compute_module, zero);
 			shad->compute_module = 0;
 		}
 	}
@@ -308,7 +308,7 @@ gpu_term ::= func( -> v0)
 
 	impl_vallocator_free_all();
 
-	vk.destroy_device(used_device, zero);
+	vk.destroy_device(hardware.used_device, zero);
 	if(surface != 0)
 	{
 		vk.destroy_surface_khr(core.vkinst, surface, zero);
@@ -331,29 +331,29 @@ impl_vallocator_initial_setup ::= func( -> v0)
 		.sType := 5;
 		.pNext := (ref bda_flags)@_;
 		.allocationSize := valloc_initial_size;
-		.memoryTypeIndex := used_mti_gpu;
+		.memoryTypeIndex := hardware.used_mti_gpu;
 	};
 	cpucreate ::= VkMemoryAllocateInfo
 	{
 		.sType := 5;
 		.pNext := (ref bda_flags)@_;
 		.allocationSize := valloc_initial_size;
-		.memoryTypeIndex := used_mti_cpu;
+		.memoryTypeIndex := hardware.used_mti_cpu;
 	};
 
 	// create initial allocations for each case (buffer gpu, image gpu, buffer cpu).
 	bgpu ::= ref(core.vallocator.buffer_gpu);
-	vk_check(vk.allocate_memory(used_device, ref gpucreate, zero, ref (bgpu->device_mem)));
+	vk_check(vk.allocate_memory(hardware.used_device, ref gpucreate, zero, ref (bgpu->device_mem)));
 	bgpu->size = valloc_initial_size;
 	bgpu->cursor = 0;
 	igpu ::= ref(core.vallocator.image_gpu);
-	vk_check(vk.allocate_memory(used_device, ref gpucreate, zero, ref (igpu->device_mem)));
+	vk_check(vk.allocate_memory(hardware.used_device, ref gpucreate, zero, ref (igpu->device_mem)));
 	igpu->size = valloc_initial_size;
 	igpu->cursor = 0;
 
 	bcpu ::= ref(core.vallocator.buffer_cpu);
-	vk_check(vk.allocate_memory(used_device, ref cpucreate, zero, ref (bcpu->device_mem)));
-	vk_check(vk.map_memory(used_device, bcpu->device_mem, 0, valloc_initial_size, 0, ref (bcpu->mapped_ptr)));
+	vk_check(vk.allocate_memory(hardware.used_device, ref cpucreate, zero, ref (bcpu->device_mem)));
+	vk_check(vk.map_memory(hardware.used_device, bcpu->device_mem, 0, valloc_initial_size, 0, ref (bcpu->mapped_ptr)));
 	
 	bcpu->size = valloc_initial_size;
 	bcpu->cursor = 0;
@@ -363,12 +363,12 @@ impl_vallocator_initial_setup ::= func( -> v0)
 impl_vallocator_free_all ::= func( -> v0)
 {
 	bgpu ::= core.vallocator.buffer_gpu;
-	vk.free_memory(used_device, bgpu.device_mem, zero);
+	vk.free_memory(hardware.used_device, bgpu.device_mem, zero);
 	igpu ::= core.vallocator.image_gpu;
-	vk.free_memory(used_device, igpu.device_mem, zero);
+	vk.free_memory(hardware.used_device, igpu.device_mem, zero);
 
 	bcpu ::= core.vallocator.buffer_cpu;
-	vk.free_memory(used_device, bcpu.device_mem, zero);
+	vk.free_memory(hardware.used_device, bcpu.device_mem, zero);
 };
 
 
@@ -377,7 +377,7 @@ impl_bind_image_mem ::= func(image : u64 -> v0)
 	valloc : valloc_t mut? mut := ref (core.vallocator.image_gpu);
 
 	memreqs : VkMemoryRequirements mut;
-	vk.get_image_memory_requirements(used_device, image, ref memreqs);
+	vk.get_image_memory_requirements(hardware.used_device, image, ref memreqs);
 
 	imgsize ::= memreqs.size;
 	if((valloc->cursor + imgsize) > (valloc->size))
@@ -393,7 +393,7 @@ impl_bind_image_mem ::= func(image : u64 -> v0)
 	padding ::= ((memreqs.align) - ((valloc->cursor) % (memreqs.align)) % (memreqs.align));
 	(valloc->cursor) = (valloc->cursor) + (padding);
 
-	ret ::= vk.bind_image_memory(used_device, image, valloc->device_mem, valloc->cursor);
+	ret ::= vk.bind_image_memory(hardware.used_device, image, valloc->device_mem, valloc->cursor);
 	if(ret == -1) // out of host memory 
 	{
 		putzstr("oom when binding image memory. todo: multiple allocations");
@@ -426,12 +426,12 @@ impl_bind_buffer_mem ::= func(buffer : u64, bufsize : u64, gpu_memory : bool -> 
 	}
 
 	memreqs : VkMemoryRequirements mut;
-	vk.get_buffer_memory_requirements(used_device, buffer, ref memreqs);
+	vk.get_buffer_memory_requirements(hardware.used_device, buffer, ref memreqs);
 	padding ::= ((memreqs.align) - ((valloc->cursor) % (memreqs.align)) % (memreqs.align));
 	(valloc->cursor) = (valloc->cursor) + (padding);
 	offset_from_zero ::= valloc->cursor;
 
-	ret ::= vk.bind_buffer_memory(used_device, buffer, valloc->device_mem, valloc->cursor);
+	ret ::= vk.bind_buffer_memory(hardware.used_device, buffer, valloc->device_mem, valloc->cursor);
 	if(ret == -1) // out of host memory 
 	{
 		putzstr("oom when binding buffer memory. todo: multiple allocations");
@@ -668,7 +668,7 @@ impl_create_graphics_pipeline ::= func(shader : gpu_shader, graphics : gpu_graph
 		.pDepthStencilState := ref depth_stencil;
 		.pColorBlendState := ref blend;
 		.pDynamicState := ref dyn;
-		.layout := pipeline_layout;
+		.layout := hardware.pipeline_layout;
 		.renderPass := 0;
 		.subpass := 0;
 		.basePipelineHandle := 0;
@@ -676,7 +676,7 @@ impl_create_graphics_pipeline ::= func(shader : gpu_shader, graphics : gpu_graph
 	};
 
 	ret : u64 mut;
-	vk_check(vk.create_graphics_pipelines(used_device, 0, 1, ref create, zero, ref ret));
+	vk_check(vk.create_graphics_pipelines(hardware.used_device, 0, 1, ref create, zero, ref ret));
 	return ret;
 };
 
@@ -704,13 +704,13 @@ impl_create_compute_pipeline ::= func(shader : gpu_shader, compute : gpu_compute
 			.pName := "main";
 			.pSpecializationInfo := zero;
 		};
-		.layout := pipeline_layout;
+		.layout := hardware.pipeline_layout;
 		.basePipelineHandle := 0;
 		.basePipelineIndex := -1;
 	};
 	ret : u64 mut;
 
-	vk_check(vk.create_compute_pipelines(used_device, 0, 1, ref create, zero, ref ret));
+	vk_check(vk.create_compute_pipelines(hardware.used_device, 0, 1, ref create, zero, ref ret));
 	return ret;
 };
 
@@ -742,8 +742,8 @@ impl_end_and_execute_scratch_commands ::= func( -> v0)
 		.signalSemaphoreCount := 0;
 		.pSignalSemaphores := zero;
 	};
-	vk_check(vk.queue_submit(graphics_queue, 1, ref submit, core.scratch.fence));
-	vk_check(vk.wait_for_fences(used_device, 1, ref (core.scratch.fence), 1, -1@u64));
-	vk_check(vk.reset_fences(used_device, 1, ref (core.scratch.fence)));
+	vk_check(vk.queue_submit(hardware.graphics_queue, 1, ref submit, core.scratch.fence));
+	vk_check(vk.wait_for_fences(hardware.used_device, 1, ref (core.scratch.fence), 1, -1@u64));
+	vk_check(vk.reset_fences(hardware.used_device, 1, ref (core.scratch.fence)));
 };
 

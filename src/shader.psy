@@ -63,7 +63,7 @@ gpu_create_graphics_shader ::= func(vertex_source : u8?, vertex_source_len : u64
 		.codeSize := vertex_source_len@_;
 		.pCode := vertex_source@_;
 	};
-	vk.create_shader_module(used_device, ref vcreate, zero, ref (resptr->vertex_module));
+	vk.create_shader_module(hardware.used_device, ref vcreate, zero, ref (resptr->vertex_module));
 	fcreate ::= VkShaderModuleCreateInfo
 	{
 		.sType := 16;
@@ -72,7 +72,7 @@ gpu_create_graphics_shader ::= func(vertex_source : u8?, vertex_source_len : u64
 		.codeSize := fragment_source_len@_;
 		.pCode := fragment_source@_;
 	};
-	vk.create_shader_module(used_device, ref fcreate, zero, ref (resptr->fragment_module));
+	vk.create_shader_module(hardware.used_device, ref fcreate, zero, ref (resptr->fragment_module));
 
 	return retid@gpu_shader;
 };
@@ -93,7 +93,7 @@ gpu_create_compute_shader ::= func(compute_source : u8?, compute_source_len : u6
 		.codeSize := compute_source_len@_;
 		.pCode := compute_source@_;
 	};
-	vk.create_shader_module(used_device, ref vcreate, zero, ref (resptr->compute_module));
+	vk.create_shader_module(hardware.used_device, ref vcreate, zero, ref (resptr->compute_module));
 
 	return retid@gpu_shader;
 };

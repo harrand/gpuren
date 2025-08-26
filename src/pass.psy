@@ -68,9 +68,9 @@ gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena 
 		.usage := (0x00000020 | 0x00000002); // VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT 
 		.sharingMode := 0;
 		.queueFamilyIndexCount := 1;
-		.pQueueFamilyIndices := ref used_qfi;
+		.pQueueFamilyIndices := ref(hardware.used_qfi);
 	};
-	vk_check(vk.create_buffer(used_device, ref meta_create, zero, ref (passptr->metabuf)));
+	vk_check(vk.create_buffer(hardware.used_device, ref meta_create, zero, ref (passptr->metabuf)));
 	(passptr->metabuf_size) = size;
 	impl_bind_buffer_mem(passptr->metabuf, size, true);
 
@@ -82,7 +82,7 @@ gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena 
 	memcopy(metabuf_debug_name_str, metabuf_prefix, prefixlen);
 	memcopy(metabuf_debug_name_str # prefixlen, passptr->info.name, namelen);
 
-	impl_label_buffer(used_device, passptr->metabuf, metabuf_debug_name_str);
+	impl_label_buffer(hardware.used_device, passptr->metabuf, metabuf_debug_name_str);
 
 	// create pipeline.
 	if(passptr->is_compute)
@@ -153,13 +153,13 @@ impl_alloc_new_pass ::= func(a : arena mut? -> pass_data_t mut?)
 	return passes # id;
 };
 
-impl_pass_writes_to_system_image ::= func(pass : gpu_pass -> bool)
+impl_pass_writes_to_system_image ::= func(p : gpu_pass -> bool)
 {
-	if(pass == (gpu_pass.present))
+	if(p == (gpu_pass.present))
 	{
 		return false;
 	}
-	passptr ::= (passes # (pass@s64));
+	passptr ::= (passes # (p@s64));
 	passinfo ::= passptr->info;
 	ginfo ::= passinfo.graphics;
 	counter : u64 mut := 0;
@@ -210,7 +210,7 @@ impl_record_compute_work ::= func(passptr : pass_data_t mut?, frame_id : u64 -> 
 	cinfo ::= pinfo.compute;
 
 	vk.cmd_bind_pipeline(frame.cmds, 0, passptr->pipeline);
-	vk.cmd_bind_descriptor_sets(frame.cmds, 0, pipeline_layout, 0, 1, passptr->descriptor_sets # (core.current_frame), 0, zero);
+	vk.cmd_bind_descriptor_sets(frame.cmds, 0, hardware.pipeline_layout, 0, 1, passptr->descriptor_sets # (core.current_frame), 0, zero);
 	vk.cmd_dispatch(frame.cmds, cinfo.kernelx@_, cinfo.kernely@_, cinfo.kernelz@_);
 };
 
@@ -381,7 +381,7 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 	// actually do rendering.
 	vk.cmd_bind_pipeline(frame.cmds, 0, passptr->pipeline);
 	// todo: bind index buffer if it exists.
-	vk.cmd_bind_descriptor_sets(frame.cmds, 0, pipeline_layout, 0, 1, passptr->descriptor_sets # (core.current_frame), 0, zero);
+	vk.cmd_bind_descriptor_sets(frame.cmds, 0, hardware.pipeline_layout, 0, 1, passptr->descriptor_sets # (core.current_frame), 0, zero);
 	viewport ::= VkViewport
 	{
 		.x := 0.0;
@@ -451,13 +451,13 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 };
 
 
-impl_record_gpu_work ::= func(pass : gpu_pass, frame_id : u64, long : arena mut?, short : arena mut? -> v0)
+impl_record_gpu_work ::= func(p : gpu_pass, frame_id : u64, long : arena mut?, short : arena mut? -> v0)
 {
-	if(pass == (gpu_pass.present))
+	if(p == (gpu_pass.present))
 	{
 		return;
 	}
-	passptr : pass_data_t mut? := passes # (pass@s64);
+	passptr : pass_data_t mut? := passes # (p@s64);
 
 	frame ::= deref(core.frames # frame_id);
 	impl_begin_label(frame.cmds, passptr->info.name);
@@ -472,22 +472,19 @@ impl_record_gpu_work ::= func(pass : gpu_pass, frame_id : u64, long : arena mut?
 	}
 };
 
-impl_pass_uses_resource ::= func(pass : gpu_pass, res : gpu_resource -> bool)
+impl_pass_uses_resource ::= func(p : gpu_pass, res : gpu_resource -> bool)
 {
 	counter : u64 mut;
 	cur_res : gpu_resource mut;
-	for(counter = 0, counter < passes_count, counter = counter + 1)
+	passptr : pass_data_t? := passes # (p@s64);
+	passinfo ::= passptr->info;
+	cur_residx : u64 mut;
+	for(cur_residx = 0, cur_residx < (passinfo.resources_count), cur_residx = cur_residx + 1)
 	{
-		passptr : pass_data_t? := passes # counter;
-		passinfo ::= passptr->info;
-		cur_residx : u64 mut;
-		for(cur_residx = 0, cur_residx < (passinfo.resources_count), cur_residx = cur_residx + 1)
+		cur_res = deref((passinfo.resources_data) # cur_residx);
+		if(cur_res == res)
 		{
-			cur_res = deref((passinfo.resources_data) # cur_residx);
-			if(cur_res == res)
-			{
-				return true;
-			}
+			return true;
 		}
 	}
 	return false;
