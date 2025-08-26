@@ -1,3 +1,11 @@
+graph : graph_state mut := zero;
+graph_state ::= struct
+{
+	data : graph_data_t mut?;
+	count : u64 := 0;
+	cap : u64 := 0;
+};
+
 gpu_graph ::= enum
 {
 	.invalid := -1;
@@ -5,7 +13,7 @@ gpu_graph ::= enum
 
 gpu_create_graph ::= func(name : u8?, a : arena mut? -> gpu_graph)
 {
-	ret ::= graph_count;
+	ret ::= graph.count;
 	graphptr ::= impl_alloc_new_graph(a);
 	namelen ::= zstrlen(name);
 	graphptr->name = arena_alloc(a, namelen + 1);
@@ -19,9 +27,9 @@ gpu_create_graph ::= func(name : u8?, a : arena mut? -> gpu_graph)
 	return ret@gpu_graph;
 };
 
-gpu_graph_add_subgraph ::= func(graph : gpu_graph, subgraph : gpu_graph -> v0)
+gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph -> v0)
 {
-	graphptr ::= graphs # (graph@s64);
+	graphptr ::= graph.data # (g@s64);
 	if(((graphptr->timeline_count) + 1) > (graphptr->timeline_cap))
 	{
 		putzstr("graph ran out of entries in timeline. todo: expand timeline array");
@@ -34,9 +42,9 @@ gpu_graph_add_subgraph ::= func(graph : gpu_graph, subgraph : gpu_graph -> v0)
 	(graphptr->timeline_count) = (graphptr->timeline_count) + 1;
 };
 
-gpu_graph_add_pass ::= func(graph : gpu_graph, pass : gpu_pass -> v0)
+gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass -> v0)
 {
-	graphptr ::= graphs # (graph@s64);
+	graphptr ::= graph.data # (g@s64);
 	if(((graphptr->timeline_count) + 1) > (graphptr->timeline_cap))
 	{
 		putzstr("graph ran out of entries in timeline. todo: expand timeline array");
@@ -44,17 +52,17 @@ gpu_graph_add_pass ::= func(graph : gpu_graph, pass : gpu_pass -> v0)
 	}
 	cur ::= graphptr->timeline_count;
 	entry_ptr ::= (graphptr->timeline) # cur;
-	(entry_ptr->handle) = (pass@s64@_);
+	(entry_ptr->handle) = (p@s64@_);
 	entry_ptr->is_graph = false;
 	(graphptr->timeline_count) = (graphptr->timeline_count) + 1;
 };
 
 // todo: take in render graph and go through the passes in that order instead.
-gpu_execute ::= func(graph : gpu_graph, long : arena mut?, short : arena mut? -> v0)
+gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> v0)
 {
-	graphptr ::= graphs # (graph@s64);
-	writes_to_system_image ::= impl_graph_writes_to_system_image(graph);
-	will_present ::= impl_graph_will_present(graph);
+	graphptr ::= graph.data # (g@s64);
+	writes_to_system_image ::= impl_graph_writes_to_system_image(g);
+	will_present ::= impl_graph_will_present(g);
 
 	frame ::= deref(core.frames # (core.current_frame));
 
@@ -253,15 +261,11 @@ graph_data_t ::= struct
 	timeline_cap : u64;
 };
 
-graphs : graph_data_t mut? mut;
-graph_count : u64 mut := 0;
-graph_cap : u64 mut := 0;
-
 // implementation details
 
-impl_graph_will_present ::= func(graph : gpu_graph -> bool)
+impl_graph_will_present ::= func(g : gpu_graph -> bool)
 {
-	graphptr ::= graphs # (graph@s64);
+	graphptr ::= graph.data # (g@s64);
 	count ::= graphptr->timeline_count;
 
 	counter : u64 mut;
@@ -277,9 +281,9 @@ impl_graph_will_present ::= func(graph : gpu_graph -> bool)
 	return false;
 };
 
-impl_graph_writes_to_system_image ::= func(graph : gpu_graph -> bool)
+impl_graph_writes_to_system_image ::= func(g : gpu_graph -> bool)
 {
-	graphptr ::= graphs # (graph@s64);
+	graphptr ::= graph.data # (g@s64);
 	count ::= graphptr->timeline_count;
 
 	counter : u64 mut;
@@ -309,22 +313,22 @@ impl_graph_writes_to_system_image ::= func(graph : gpu_graph -> bool)
 
 impl_alloc_new_graph ::= func(a : arena mut? -> graph_data_t mut?)
 {
-	if(graph_cap == 0)
+	if(graph.cap == 0)
 	{
-		graphs = arena_alloc(a, __sizeof(graph_data_t) * 64);
-		graph_cap = 64;
+		graph.data = arena_alloc(a, __sizeof(graph_data_t) * 64);
+		graph.cap = 64;
 	}
-	if(graph_count > graph_cap)
+	if(graph.count > graph.cap)
 	{
 		putzstr("ran out of graphs. todo: fix this.");
 		__debugbreak();
 	}
-	id ::= graph_count;
-	graph_count = graph_count + 1;
-	return graphs # id;
+	id ::= graph.count;
+	graph.count = (graph.count + 1);
+	return graph.data # id;
 };
 
-impl_record_subgraph_work ::= func(graph : gpu_graph, long : arena mut?, short : arena mut? -> v0)
+impl_record_subgraph_work ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> v0)
 {
 	putzstr("subgraphs are NYI");
 	__debugbreak();
