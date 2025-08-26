@@ -213,8 +213,8 @@ gpu_term ::= func( -> v0)
 		}
 
 		// dont forget descriptor layouts.
-		vk.destroy_descriptor_set_layout(used_device, deref(set_layouts # counter), zero);
-		deref(set_layouts # counter) = 0;
+		vk.destroy_descriptor_set_layout(used_device, deref(descriptor.set_layouts # counter), zero);
+		deref(descriptor.set_layouts # counter) = 0;
 	}
 	for(counter = 0, counter < (swapchain_image_count@_), counter = counter + 1)
 	{
@@ -277,11 +277,11 @@ gpu_term ::= func( -> v0)
 	}
 	resource_count = 0;
 
-	for(counter = 0, counter < descriptor_pools_count, counter = counter + 1)
+	for(counter = 0, counter < (descriptor.pools_count), counter = counter + 1)
 	{
-		vk.destroy_descriptor_pool(used_device, deref(descriptor_pools_data # counter), zero);
+		vk.destroy_descriptor_pool(used_device, deref(descriptor.pools_data # counter), zero);
 	}
-	descriptor_pools_count = 0;
+	descriptor.pools_count = 0;
 
 	// destroy all shaders.
 	shad : shader_data_t mut? mut;

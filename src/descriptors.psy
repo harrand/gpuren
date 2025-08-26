@@ -1,19 +1,23 @@
-set_layouts : u64 mut[2] mut;
-descriptor_pools_data : u64 mut? mut;
-descriptor_pools_count : u64 mut := 0;
-descriptor_pools_cap : u64 mut := 0;
+descriptor : descriptor_state mut := zero;
+descriptor_state ::= struct
+{
+	set_layouts : u64 mut[2];
+	pools_data : u64 mut?;
+	pools_count : u64;
+	pools_cap : u64;
+};
 
 MAX_GLOBAL_IMAGE_COUNT ::= 8192;
 MAX_IMAGE_COUNT_PER_PASS ::= 4096;
 
 impl_new_descriptor_pool ::= func(a : arena mut? -> u64)
 {
-	if(descriptor_pools_cap == 0)
+	if(descriptor.pools_cap == 0)
 	{
-		descriptor_pools_cap = 4;
-		descriptor_pools_data = arena_alloc(a, descriptor_pools_cap * __sizeof(deref descriptor_pools_data));
+		descriptor.pools_cap = 4;
+		descriptor.pools_data = arena_alloc(a, descriptor.pools_cap * __sizeof(deref(descriptor.pools_data)));
 	}
-	if(descriptor_pools_count >= descriptor_pools_cap)
+	if(descriptor.pools_count >= descriptor.pools_cap)
 	{
 		putzstr("todo: expand allocation of descriptor pool handles");
 		__debugbreak();
@@ -35,8 +39,8 @@ impl_new_descriptor_pool ::= func(a : arena mut? -> u64)
 	};
 	newpool : u64 mut;
 	vk_check(vk.create_descriptor_pool(used_device, ref create, zero, ref newpool));
-	deref(descriptor_pools_data # descriptor_pools_count) = newpool;
-	descriptor_pools_count = descriptor_pools_count + 1;
+	deref(descriptor.pools_data # (descriptor.pools_count)) = newpool;
+	descriptor.pools_count = (descriptor.pools_count + 1);
 	return newpool;
 };
 
@@ -59,7 +63,7 @@ impl_try_allocate_descriptors ::= func(pool : u64, sets_data : u64 mut?, image_c
 		.pNext := (ref variable_alloc)@_;
 		.descriptorPool := pool;
 		.descriptorSetCount := 2;
-		.pSetLayouts := set_layouts # 0;
+		.pSetLayouts := descriptor.set_layouts # 0;
 	};
 	return (vk.allocate_descriptor_sets(used_device, ref alloc, sets_data)) == 0;
 };
@@ -67,11 +71,11 @@ impl_try_allocate_descriptors ::= func(pool : u64, sets_data : u64 mut?, image_c
 impl_populate_descriptors ::= func(passptr : pass_data_t mut?, long : arena mut?, short : arena mut? -> v0)
 {
 	pinfo ::= passptr->info;
-	if(descriptor_pools_count == 0)
+	if(descriptor.pools_count == 0)
 	{
 		impl_new_descriptor_pool(long);
 	}
-	pool : u64 mut := deref(descriptor_pools_data # (descriptor_pools_count - 1));
+	pool : u64 mut := deref(descriptor.pools_data # (descriptor.pools_count - 1));
 
 	counter : u64 mut;
 	image_count : u32 mut := 0;
