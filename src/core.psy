@@ -346,10 +346,12 @@ impl_vallocator_initial_setup ::= func( -> v0)
 	vk_check(vk.allocate_memory(hardware.used_device, ref gpucreate, zero, ref (bgpu->device_mem)));
 	bgpu->size = valloc_initial_size;
 	bgpu->cursor = 0;
+	impl_label_device_memory(hardware.used_device, bgpu->device_mem, "Buffer GPU Memory");
 	igpu ::= ref(core.vallocator.image_gpu);
 	vk_check(vk.allocate_memory(hardware.used_device, ref gpucreate, zero, ref (igpu->device_mem)));
 	igpu->size = valloc_initial_size;
 	igpu->cursor = 0;
+	impl_label_device_memory(hardware.used_device, igpu->device_mem, "Image GPU Memory");
 
 	bcpu ::= ref(core.vallocator.buffer_cpu);
 	vk_check(vk.allocate_memory(hardware.used_device, ref cpucreate, zero, ref (bcpu->device_mem)));
@@ -357,6 +359,7 @@ impl_vallocator_initial_setup ::= func( -> v0)
 	
 	bcpu->size = valloc_initial_size;
 	bcpu->cursor = 0;
+	impl_label_device_memory(hardware.used_device, bcpu->device_mem, "Buffer CPU Memory");
 };
 
 

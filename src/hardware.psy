@@ -259,6 +259,7 @@ gpu_use_hardware ::= func(hw : gpu_hardware, window : window -> v0)
 
 	vk_check(vk.create_device(pdev, ref create, zero, ref(hardware.used_device)));
 	hardware.used_hardware = pdev;
+	impl_label_physical_device(hardware.used_device, hardware.used_hardware, hw.name);
 	hardware.used_qfi = (hw.id);
 	hardware.used_mti_gpu = (hw.target_heap_gpu)@_;
 	hardware.used_mti_cpu = (hw.target_heap_cpu)@_;
@@ -304,6 +305,7 @@ gpu_use_hardware ::= func(hw : gpu_hardware, window : window -> v0)
 	{
 		frame_ptr = (core.frames # counter);
 		vk_check(vk.create_command_pool(hardware.used_device, ref pool_create, zero, ref (frame_ptr->cpool)));
+
 		cmd_info.commandPool = (frame_ptr->cpool);
 		vk_check(vk.allocate_command_buffers(hardware.used_device, ref cmd_info, ref (frame_ptr->cmds)));
 
@@ -313,7 +315,9 @@ gpu_use_hardware ::= func(hw : gpu_hardware, window : window -> v0)
 
 	vk_check(vk.create_command_pool(hardware.used_device, ref pool_create, zero, ref (core.scratch.cpool)));
 	cmd_info.commandPool = (core.scratch.cpool);
+	impl_label_command_pool(hardware.used_device, core.scratch.cpool, "Scratch Command Pool");
 	vk_check(vk.allocate_command_buffers(hardware.used_device, ref cmd_info, ref (core.scratch.cmds)));
+	impl_label_command_buffer(hardware.used_device, core.scratch.cmds, "Scratch Command Buffer");
 
 	vk_check(vk.create_fence(hardware.used_device, ref fence_create, zero, ref (core.scratch.fence)));
 

@@ -24,6 +24,24 @@ impl_end_label ::= func(cmdbuf : u64 -> v0)
 	vk.cmd_end_debug_utils_label_ext(cmdbuf);
 };
 
+impl_label_physical_device ::= func(device : u64, handle : u64, name : u8? -> v0)
+{
+	if(!is_debug_utils_enabled)
+	{
+		return;
+	}
+
+	label ::= VkDebugUtilsObjectNameInfoEXT
+	{
+		.sType := 1000128000;
+		.pNext := zero;
+		.objectType := VK_OBJECT_TYPE_PHYSICAL_DEVICE;
+		.objectHandle := handle;
+		.pObjectName := name;
+	};
+	vk.set_debug_utils_object_name_ext(device, ref label);
+};
+
 impl_label_buffer ::= func(device : u64, handle : u64, name : u8? -> v0)
 {
 	if(!is_debug_utils_enabled)
@@ -72,6 +90,60 @@ impl_label_view ::= func(device : u64, handle : u64, name : u8? -> v0)
 		.sType := 1000128000;
 		.pNext := zero;
 		.objectType := VK_OBJECT_TYPE_IMAGE_VIEW;
+		.objectHandle := handle;
+		.pObjectName := name;
+	};
+	vk.set_debug_utils_object_name_ext(device, ref label);
+};
+
+impl_label_command_pool ::= func(device : u64, handle : u64, name : u8? -> v0)
+{
+	if(!is_debug_utils_enabled)
+	{
+		return;
+	}
+
+	label ::= VkDebugUtilsObjectNameInfoEXT
+	{
+		.sType := 1000128000;
+		.pNext := zero;
+		.objectType := VK_OBJECT_TYPE_COMMAND_POOL;
+		.objectHandle := handle;
+		.pObjectName := name;
+	};
+	vk.set_debug_utils_object_name_ext(device, ref label);
+};
+
+impl_label_command_buffer ::= func(device : u64, handle : u64, name : u8? -> v0)
+{
+	if(!is_debug_utils_enabled)
+	{
+		return;
+	}
+
+	label ::= VkDebugUtilsObjectNameInfoEXT
+	{
+		.sType := 1000128000;
+		.pNext := zero;
+		.objectType := VK_OBJECT_TYPE_COMMAND_BUFFER;
+		.objectHandle := handle;
+		.pObjectName := name;
+	};
+	vk.set_debug_utils_object_name_ext(device, ref label);
+};
+
+impl_label_device_memory ::= func(device : u64, handle : u64, name : u8? -> v0)
+{
+	if(!is_debug_utils_enabled)
+	{
+		return;
+	}
+
+	label ::= VkDebugUtilsObjectNameInfoEXT
+	{
+		.sType := 1000128000;
+		.pNext := zero;
+		.objectType := VK_OBJECT_TYPE_DEVICE_MEMORY;
 		.objectHandle := handle;
 		.pObjectName := name;
 	};
