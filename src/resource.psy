@@ -19,50 +19,7 @@ resource_data_t ::= struct
 
 };
 
-gpu_buffer_flag ::= enum
-{
-	.none := 0b0000;
-	.dynamic := 0b0001;
-	.index_buffer := 0b0010;
-	.draw_buffer := 0b0100;
-};
-
-gpu_image_flag ::= enum
-{
-	.none := 0;
-};
-
-gpu_resource_flag ::= enum
-{ 
-	// ignore gpu_resource_info.data, fill size with zeroes.
-	.zero_memory := 0b00000001;
-};
-
-gpu_image_type ::= enum
-{
-	.rgba := 0;
-	.depth := 1;
-};
-
-gpu_resource_info ::= struct
-{
-	data : v0? weak;
-	data_size : u64;
-	image_dimensions : u32[2];
-	image_type : gpu_image_type;
-	flags : gpu_resource_flag;
-	buffer_flags : gpu_buffer_flag;
-	image_flags : gpu_image_flag;
-	name : u8?;
-};
-
-gpu_resource ::= enum
-{
-	.invalid := -1;
-	.window_resource := -2;
-};
-
-gpu_create_buffer ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource)
+impl_gpu_create_buffer ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource)
 {
 	retid ::= resource.count;
 	resptr ::= impl_alloc_new_resource(a);
@@ -70,7 +27,7 @@ gpu_create_buffer ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resou
 	return retid@gpu_resource;
 };
 
-gpu_create_image ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource)
+impl_gpu_create_image ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource)
 {
 	retid ::= resource.count;
 	resptr ::= impl_alloc_new_resource(a);
@@ -78,8 +35,7 @@ gpu_create_image ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resour
 	return retid@gpu_resource;
 };
 
-
-gpu_resource_write ::= func(res : gpu_resource, data : v0? weak, data_size : u64, offset : u64 -> v0)
+impl_gpu_resource_write ::= func(res : gpu_resource, data : v0? weak, data_size : u64, offset : u64 -> v0)
 {
 	resptr ::= (resource.data # (res@s64));
 	rinfo ::= ref (resptr->info);
@@ -88,7 +44,7 @@ gpu_resource_write ::= func(res : gpu_resource, data : v0? weak, data_size : u64
 	impl_write_a_resource(resptr, data_size, offset);
 };
 
-gpu_resource_read ::= func(res : gpu_resource, buf : v0? weak, len : u64, offset : u64 -> v0)
+impl_gpu_resource_read ::= func(res : gpu_resource, buf : v0? weak, len : u64, offset : u64 -> v0)
 {
 	if(gpu_resource_size(res) <= (offset + len))
 	{
@@ -110,14 +66,14 @@ gpu_resource_read ::= func(res : gpu_resource, buf : v0? weak, len : u64, offset
 	}
 };
 
-gpu_resource_size ::= func(res : gpu_resource -> u64)
+impl_gpu_resource_size ::= func(res : gpu_resource -> u64)
 {
 	resptr ::= resource.data # (res@s64);
 	rinfo ::= resptr->info;
 	return rinfo.data_size;
 };
 
-gpu_resource_mapping ::= func(res : gpu_resource -> u8 mut?)
+impl_gpu_resource_mapping ::= func(res : gpu_resource -> u8 mut?)
 {
 	resptr ::= resource.data # (res@s64);
 	rinfo ::= resptr->info;
@@ -130,7 +86,7 @@ gpu_resource_mapping ::= func(res : gpu_resource -> u8 mut?)
 	return resptr->mapped_ptr@_;
 };
 
-gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena mut?, short : arena mut? -> v0)
+impl_gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena mut?, short : arena mut? -> v0)
 {
 	resptr ::= resource.data # (res@s64);
 	oldinfo ::= resptr->info;

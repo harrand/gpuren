@@ -13,42 +13,14 @@ hardware_state ::= struct
 	pipeline_layout : u64;
 };
 
-gpu_hardware_type ::= enum
-{
-	.gpu := 0;
-	.igpu := 1;
-	.cpu := 2;
-	.unknown := 3;
-};
-
-gpu_hardware_caps ::= enum
-{
-	.graphics_compute := 0;
-	.graphics_only := 1;
-	.compute_only := 2;
-	.none := 3;
-};
-
-gpu_hardware ::= struct
-{
-	name : u8 mut?;
-	target_heap_gpu : u64;
-	target_heap_cpu : u64;
-	vram_size_mib : u64;
-	type : gpu_hardware_type;
-	caps : gpu_hardware_caps;
-	id : u32;
-	native_handle : u64;
-};
-
-gpu_hardware_count ::= func( -> u64)
+impl_gpu_hardware_count ::= func( -> u64)
 {
 	ret : u32 mut;
 	vk_check(vk.enumerate_physical_devices(core.vkinst, ref ret, zero));
 	return ret@_;
 };
 
-gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, a : arena mut? -> gpu_err)
+impl_gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, a : arena mut? -> gpu_err)
 {
 	// need an array of VkPhysicalDevices for vulkan to write into.
 	pdev_storage : u64 mut? := arena_alloc(a, __sizeof(u64) * array_size);
@@ -67,7 +39,7 @@ gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, a : a
 	return gpu_err.none;
 };
 
-gpu_use_hardware ::= func(hw : gpu_hardware, window : window -> v0)
+impl_gpu_use_hardware ::= func(hw : gpu_hardware, window : window -> v0)
 {
 	core.target_window = window;
 	pdev ::= hw.native_handle;

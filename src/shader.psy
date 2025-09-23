@@ -15,20 +15,7 @@ shader_data_t ::= struct
 	compute_module : u64;
 };
 
-gpu_shader_sources ::= struct
-{
-	vertex_spv_data : u8 mut?;
-	vertex_spv_count : u64;
-	fragment_spv_data : u8 mut?;
-	fragment_spv_count : u64;
-};
-
-gpu_shader ::= enum
-{
-	.invalid := -1;
-};
-
-gpu_load_shader_files ::= func(vertex_spv_path : u8?, fragment_spv_path : u8?, a : arena mut? -> gpu_shader_sources)
+impl_gpu_load_shader_files ::= func(vertex_spv_path : u8?, fragment_spv_path : u8?, a : arena mut? -> gpu_shader_sources)
 {
 	ret : gpu_shader_sources mut;
 	if(!file_exists(vertex_spv_path))
@@ -53,7 +40,7 @@ gpu_load_shader_files ::= func(vertex_spv_path : u8?, fragment_spv_path : u8?, a
 	return ret;
 };
 
-gpu_create_graphics_shader ::= func(vertex_source : u8?, vertex_source_len : u64, fragment_source : u8?, fragment_source_len : u64, a : arena mut? -> gpu_shader)
+impl_gpu_create_graphics_shader ::= func(vertex_source : u8?, vertex_source_len : u64, fragment_source : u8?, fragment_source_len : u64, a : arena mut? -> gpu_shader)
 {
 	retid ::= shader.count;
 	resptr ::= impl_alloc_new_shader(a);
@@ -82,7 +69,7 @@ gpu_create_graphics_shader ::= func(vertex_source : u8?, vertex_source_len : u64
 	return retid@gpu_shader;
 };
 
-gpu_create_compute_shader ::= func(compute_source : u8?, compute_source_len : u64, a : arena mut? -> gpu_shader)
+impl_gpu_create_compute_shader ::= func(compute_source : u8?, compute_source_len : u64, a : arena mut? -> gpu_shader)
 {
 	retid ::= shader.count;
 	resptr ::= impl_alloc_new_shader(a);

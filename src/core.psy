@@ -54,66 +54,8 @@ else
 	is_debug_utils_enabled ::= true;
 }
 
-gpu_appinfo ::= struct
-{
-	name : u8?;
-	ver_maj : u32;
-	ver_min : u32;
-};
 
-gpu_err ::= enum
-{
-	.none := 0;
-	.unknown := 1;
-};
-
-gpu_cull ::= enum
-{
-	.none := 0;
-	.back := 2;
-	.front := 1;
-	.both := 3;
-};
-
-gpu_draw_command ::= struct
-{
-	vertex_count : u32;
-	instance_count : u32;
-	first_vertex : u32;
-	first_instance : u32;
-};
-
-gpu_draw_indexed_command ::= struct
-{
-	index_count : u32;
-	instance_count : u32;
-	first_index : u32;
-	vertex_offset : s32;
-	first_instance : u32;
-};
-
-gpu_graphics_state ::= struct
-{
-	clear_colour : f32[4];
-	scissor : u32[4];
-	colour_targets_data : gpu_resource?;
-	colour_targets_count : u64;
-	depth_target : gpu_resource;
-	index_buffer : gpu_resource;
-	draw_buffer : gpu_resource;
-	culling : gpu_cull;
-	static_tri_count : u64;
-};
-
-gpu_compute_state ::= struct
-{
-	kernelx : u32;
-	kernely : u32;
-	kernelz : u32;
-};
-
-
-gpu_init ::= func(info : gpu_appinfo -> v0)
+impl_gpu_init ::= func(info : gpu_appinfo -> v0)
 {
 	GPU_VERSION ::= VK_MAKE_API_VERSION(0, 0, 1, 0);
 	vulkan_init();
@@ -174,7 +116,7 @@ gpu_init ::= func(info : gpu_appinfo -> v0)
 	vulkan_load_functions(core.vkinst, is_debug_utils_enabled);
 };
 
-gpu_term ::= func( -> v0)
+impl_gpu_term ::= func( -> v0)
 {
 	vk.device_wait_idle(hardware.used_device);
 	if(hardware.pipeline_layout != 0)

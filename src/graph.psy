@@ -6,12 +6,7 @@ graph_state ::= struct
 	cap : u64 := 0;
 };
 
-gpu_graph ::= enum
-{
-	.invalid := -1;
-};
-
-gpu_create_graph ::= func(name : u8?, a : arena mut? -> gpu_graph)
+impl_gpu_create_graph ::= func(name : u8?, a : arena mut? -> gpu_graph)
 {
 	ret ::= graph.count;
 	graphptr ::= impl_alloc_new_graph(a);
@@ -27,7 +22,7 @@ gpu_create_graph ::= func(name : u8?, a : arena mut? -> gpu_graph)
 	return ret@gpu_graph;
 };
 
-gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph -> v0)
+impl_gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph -> v0)
 {
 	graphptr ::= graph.data # (g@s64);
 	if(((graphptr->timeline_count) + 1) > (graphptr->timeline_cap))
@@ -42,7 +37,7 @@ gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph -> v0)
 	(graphptr->timeline_count) = (graphptr->timeline_count) + 1;
 };
 
-gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass -> v0)
+impl_gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass -> v0)
 {
 	graphptr ::= graph.data # (g@s64);
 	if(((graphptr->timeline_count) + 1) > (graphptr->timeline_cap))
@@ -58,7 +53,7 @@ gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass -> v0)
 };
 
 // todo: take in render graph and go through the passes in that order instead.
-gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> v0)
+impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> v0)
 {
 	graphptr ::= graph.data # (g@s64);
 	writes_to_system_image ::= impl_graph_writes_to_system_image(g);

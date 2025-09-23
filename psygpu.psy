@@ -2,3 +2,267 @@
 {
 	add_source_directory("src");
 }
+
+gpu_init ::= func(info : gpu_appinfo -> v0)
+{
+	impl_gpu_init(info);
+};
+
+gpu_term ::= func( -> v0)
+{
+	impl_gpu_term();
+};
+
+gpu_create_graph ::= func(name : u8?, a : arena mut? -> gpu_graph)
+{
+	return impl_gpu_create_graph(name, a);
+};
+
+gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph -> v0)
+{
+	impl_gpu_graph_add_subgraph(g, subgraph);
+};
+
+gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass -> v0)
+{
+	impl_gpu_graph_add_pass(g, p);
+};
+
+gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> v0)
+{
+	impl_gpu_execute(g, long, short);
+};
+
+gpu_hardware_count ::= func( -> u64)
+{
+	return impl_gpu_hardware_count();
+};
+
+gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, a : arena mut? -> gpu_err)
+{
+	return impl_gpu_iterate_hardware(array, array_size, a);
+};
+
+gpu_use_hardware ::= func(hw : gpu_hardware, window : window -> v0)
+{
+	impl_gpu_use_hardware(hw, window);
+};
+
+gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena mut? -> gpu_pass)
+{
+	return impl_gpu_create_pass(info, long, short);
+};
+
+gpu_create_buffer ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource)
+{
+	return impl_gpu_create_buffer(info, a);
+};
+
+gpu_create_image ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource)
+{
+	return impl_gpu_create_image(info, a);
+};
+
+gpu_resource_write ::= func(res : gpu_resource, data : v0? weak, data_size : u64, offset : u64 -> v0)
+{
+	impl_gpu_resource_write(res, data, data_size, offset);
+};
+
+gpu_resource_read ::= func(res : gpu_resource, buf : v0? weak, len : u64, offset : u64 -> v0)
+{
+	impl_gpu_resource_read(res, buf, len, offset);
+};
+
+gpu_resource_size ::= func(res : gpu_resource -> u64)
+{
+	return impl_gpu_resource_size(res);
+};
+
+gpu_resource_mapping ::= func(res : gpu_resource -> u8 mut?)
+{
+	return impl_gpu_resource_mapping(res);
+};
+
+gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena mut?, short : arena mut? -> v0)
+{
+	impl_gpu_resize_buffer(res, new_size, long, short);
+};
+
+gpu_load_shader_files ::= func(vertex_spv_path : u8?, fragment_spv_path : u8?, a : arena mut? -> gpu_shader_sources)
+{
+	return impl_gpu_load_shader_files(vertex_spv_path, fragment_spv_path, a);
+};
+
+gpu_create_graphics_shader ::= func(vertex_source : u8?, vertex_source_len : u64, fragment_source : u8?, fragment_source_len : u64, a : arena mut? -> gpu_shader)
+{
+	return impl_gpu_create_graphics_shader(vertex_source, vertex_source_len, fragment_source, fragment_source_len, a);
+};
+
+gpu_create_compute_shader ::= func(compute_source : u8?, compute_source_len : u64, a : arena mut? -> gpu_shader)
+{
+	return impl_gpu_create_compute_shader(compute_source, compute_source_len, a);
+};
+
+gpu_appinfo ::= struct
+{
+	name : u8?;
+	ver_maj : u32;
+	ver_min : u32;
+};
+
+gpu_err ::= enum
+{
+	.none := 0;
+	.unknown := 1;
+};
+
+gpu_cull ::= enum
+{
+	.none := 0;
+	.back := 2;
+	.front := 1;
+	.both := 3;
+};
+
+gpu_draw_command ::= struct
+{
+	vertex_count : u32;
+	instance_count : u32;
+	first_vertex : u32;
+	first_instance : u32;
+};
+
+gpu_draw_indexed_command ::= struct
+{
+	index_count : u32;
+	instance_count : u32;
+	first_index : u32;
+	vertex_offset : s32;
+	first_instance : u32;
+};
+
+gpu_graphics_state ::= struct
+{
+	clear_colour : f32[4];
+	scissor : u32[4];
+	colour_targets_data : gpu_resource?;
+	colour_targets_count : u64;
+	depth_target : gpu_resource;
+	index_buffer : gpu_resource;
+	draw_buffer : gpu_resource;
+	culling : gpu_cull;
+	static_tri_count : u64;
+};
+
+gpu_compute_state ::= struct
+{
+	kernelx : u32;
+	kernely : u32;
+	kernelz : u32;
+};
+
+gpu_hardware_type ::= enum
+{
+	.gpu := 0;
+	.igpu := 1;
+	.cpu := 2;
+	.unknown := 3;
+};
+
+gpu_hardware_caps ::= enum
+{
+	.graphics_compute := 0;
+	.graphics_only := 1;
+	.compute_only := 2;
+	.none := 3;
+};
+
+gpu_hardware ::= struct
+{
+	name : u8 mut?;
+	target_heap_gpu : u64;
+	target_heap_cpu : u64;
+	vram_size_mib : u64;
+	type : gpu_hardware_type;
+	caps : gpu_hardware_caps;
+	id : u32;
+	native_handle : u64;
+};
+
+gpu_graph ::= enum
+{
+	.invalid := -1;
+};
+
+gpu_pass_info ::= struct
+{
+	graphics : gpu_graphics_state;
+	compute : gpu_compute_state;
+	shader : gpu_shader;
+	resources_data : gpu_resource?;
+	resources_count : u64;
+	name : u8?;
+};
+
+gpu_pass ::= enum
+{
+	.invalid := -1;
+	.present := -2;
+};
+
+gpu_buffer_flag ::= enum
+{
+	.none := 0b0000;
+	.dynamic := 0b0001;
+	.index_buffer := 0b0010;
+	.draw_buffer := 0b0100;
+};
+
+gpu_image_flag ::= enum
+{
+	.none := 0;
+};
+
+gpu_resource_flag ::= enum
+{ 
+	// ignore gpu_resource_info.data, fill size with zeroes.
+	.zero_memory := 0b00000001;
+};
+
+gpu_image_type ::= enum
+{
+	.rgba := 0;
+	.depth := 1;
+};
+
+gpu_resource_info ::= struct
+{
+	data : v0? weak;
+	data_size : u64;
+	image_dimensions : u32[2];
+	image_type : gpu_image_type;
+	flags : gpu_resource_flag;
+	buffer_flags : gpu_buffer_flag;
+	image_flags : gpu_image_flag;
+	name : u8?;
+};
+
+gpu_resource ::= enum
+{
+	.invalid := -1;
+	.window_resource := -2;
+};
+
+gpu_shader_sources ::= struct
+{
+	vertex_spv_data : u8 mut?;
+	vertex_spv_count : u64;
+	fragment_spv_data : u8 mut?;
+	fragment_spv_count : u64;
+};
+
+gpu_shader ::= enum
+{
+	.invalid := -1;
+};
+

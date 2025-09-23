@@ -23,23 +23,7 @@ pass_data_t ::= struct
 };
 
 
-gpu_pass_info ::= struct
-{
-	graphics : gpu_graphics_state;
-	compute : gpu_compute_state;
-	shader : gpu_shader;
-	resources_data : gpu_resource?;
-	resources_count : u64;
-	name : u8?;
-};
-
-gpu_pass ::= enum
-{
-	.invalid := -1;
-	.present := -2;
-};
-
-gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena mut? -> gpu_pass)
+impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena mut? -> gpu_pass)
 {
 	retid ::= pass.count;
 	passptr ::= impl_alloc_new_pass(long);
