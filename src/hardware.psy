@@ -28,7 +28,11 @@ impl_gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, 
 	result ::= vk.enumerate_physical_devices(core.vkinst, ref physical_device_count, pdev_storage);
 	if(result != 0)
 	{
-		return gpu_err.unknown;
+		return gpu_err
+		{
+			.code := gpu_err_code.unknown;
+			.msg := "failed to enumerate vulkan physical devices";
+		};
 	}
 	
 	counter : u64 mut;
@@ -36,7 +40,7 @@ impl_gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, 
 	{
 		impl_fill_hardware_info(array # counter, deref(pdev_storage # counter), a);
 	}
-	return gpu_err.none;
+	return zero;
 };
 
 impl_gpu_use_hardware ::= func(hw : gpu_hardware, window : window -> v0)

@@ -192,7 +192,7 @@ impl_get_pass_colour_target_dimensions ::= func(passptr : pass_data_t? -> u32[2]
 };
 
 
-impl_record_compute_work ::= func(passptr : pass_data_t mut?, frame_id : u64 -> v0)
+impl_record_compute_work ::= func(passptr : pass_data_t mut?, frame_id : u64 -> gpu_err)
 {
 	frame ::= deref(core.frames # frame_id);
 	pinfo ::= passptr->info;
@@ -201,9 +201,10 @@ impl_record_compute_work ::= func(passptr : pass_data_t mut?, frame_id : u64 -> 
 	vk.cmd_bind_pipeline(frame.cmds, 0, passptr->pipeline);
 	vk.cmd_bind_descriptor_sets(frame.cmds, 0, hardware.pipeline_layout, 0, 1, passptr->descriptor_sets # (core.current_frame), 0, zero);
 	vk.cmd_dispatch(frame.cmds, cinfo.kernelx@_, cinfo.kernely@_, cinfo.kernelz@_);
+	return zero;
 };
 
-impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, long : arena mut?, short : arena mut? -> v0)
+impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, long : arena mut?, short : arena mut? -> gpu_err)
 {
 	frame ::= deref(core.frames # frame_id);
 	pinfo ::= passptr->info;
@@ -212,8 +213,11 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 
 	if(ccount == 0)
 	{
-		putzstr("doesn't make sense to have a graphics pass with no colour attachments. please use one.");
-		__debugbreak();
+		return gpu_err
+		{
+			.code := gpu_err_code.malformed;
+			.msg := "doesn't make sense to have a graphics pass with no colour attachments. please use one.";
+		};
 	}
 
 	colour_attachments : VkRenderingAttachmentInfo mut? := arena_alloc(short, __sizeof(VkRenderingAttachmentInfo) * ccount);
@@ -437,28 +441,31 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 	}
 
 	vk.cmd_end_rendering(frame.cmds);
+	return zero;
 };
 
 
-impl_record_gpu_work ::= func(p : gpu_pass, frame_id : u64, long : arena mut?, short : arena mut? -> v0)
+impl_record_gpu_work ::= func(p : gpu_pass, frame_id : u64, long : arena mut?, short : arena mut? -> gpu_err)
 {
 	if(p == (gpu_pass.present))
 	{
-		return;
+		return zero;
 	}
 	passptr : pass_data_t mut? := pass.data # (p@s64);
 
 	frame ::= deref(core.frames # frame_id);
 	impl_begin_label(frame.cmds, passptr->info.name);
-	defer impl_end_label(frame.cmds);
+	ret : gpu_err mut := zero;
 	if(passptr->is_compute)
 	{
-		impl_record_compute_work(passptr, frame_id);
+		ret = impl_record_compute_work(passptr, frame_id);
 	}
 	else
 	{
-		impl_record_graphics_work(passptr, frame_id, long, short);
+		ret = impl_record_graphics_work(passptr, frame_id, long, short);
 	}
+	impl_end_label(frame.cmds);
+	return ret;
 };
 
 impl_pass_uses_resource ::= func(p : gpu_pass, res : gpu_resource -> bool)

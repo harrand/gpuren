@@ -53,8 +53,9 @@ impl_gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass -> v0)
 };
 
 // todo: take in render graph and go through the passes in that order instead.
-impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> v0)
+impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> gpu_err)
 {
+	ret : gpu_err mut := zero;
 	graphptr ::= graph.data # (g@s64);
 	writes_to_system_image ::= impl_graph_writes_to_system_image(g);
 	will_present ::= impl_graph_will_present(g);
@@ -69,11 +70,11 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 		impl_require_swapchain(long);
 		if(swapchain.width == 0)
 		{
-			return;
+			return zero;
 		}
 		if(swapchain.height == 0)
 		{
-			return;
+			return zero;
 		}
 
 		vk_check(vk.acquire_next_image_khr(hardware.used_device, swapchain.handle, 9999999999, 0, frame.swapchain_fence, ref image_index));
@@ -128,11 +129,19 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 		cur_entry = deref((graphptr->timeline) # counter);
 		if(cur_entry.is_graph)
 		{
-			impl_record_subgraph_work((cur_entry.handle)@s64@gpu_graph, long, short);
+			ret = impl_record_subgraph_work((cur_entry.handle)@s64@gpu_graph, long, short);
+			if(ret.code != zero)
+			{
+				return ret;
+			}
 		}
 		else
 		{
-			impl_record_gpu_work((cur_entry.handle)@s64@gpu_pass, core.current_frame, long, short);
+			ret = impl_record_gpu_work((cur_entry.handle)@s64@gpu_pass, core.current_frame, long, short);
+			if(ret.code != zero)
+			{
+				return ret;
+			}
 		}
 	}
 
@@ -240,6 +249,7 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 	}
 
 	core.current_frame = ((core.current_frame + 1) % 2);
+	return ret;
 };
 
 graph_entry ::= struct
@@ -323,8 +333,7 @@ impl_alloc_new_graph ::= func(a : arena mut? -> graph_data_t mut?)
 	return graph.data # id;
 };
 
-impl_record_subgraph_work ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> v0)
+impl_record_subgraph_work ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> gpu_err)
 {
-	putzstr("subgraphs are NYI");
-	__debugbreak();
+	return gpu_err{.code := gpu_err_code.unknown; .msg := "subgraphs are nyi";};
 };

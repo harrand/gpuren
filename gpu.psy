@@ -28,9 +28,9 @@ gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass -> v0)
 	impl_gpu_graph_add_pass(g, p);
 };
 
-gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> v0)
+gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> gpu_err)
 {
-	impl_gpu_execute(g, long, short);
+	return impl_gpu_execute(g, long, short);
 };
 
 gpu_hardware_count ::= func( -> u64)
@@ -110,10 +110,18 @@ gpu_appinfo ::= struct
 	ver_min : u32;
 };
 
-gpu_err ::= enum
+gpu_err ::= struct
 {
-	.none := 0;
+	code : gpu_err_code;
+	msg : u8?;
+};
+
+gpu_err_code ::= enum
+{
+	// something happened that i cant explain
 	.unknown := 1;
+	// one of the arguments or state was malformed in some way
+	.malformed := 2;
 };
 
 gpu_cull ::= enum
