@@ -43,9 +43,9 @@ gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, a : a
 	return impl_gpu_iterate_hardware(array, array_size, a);
 };
 
-gpu_use_hardware ::= func(hw : gpu_hardware, window : window -> v0)
+gpu_use_hardware ::= func(hw : gpu_hardware, window : window -> gpu_err)
 {
-	impl_gpu_use_hardware(hw, window);
+	return impl_gpu_use_hardware(hw, window);
 };
 
 gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena mut? -> gpu_pass)
@@ -122,6 +122,16 @@ gpu_err_code ::= enum
 	.unknown := 1;
 	// one of the arguments or state was malformed in some way
 	.malformed := 2;
+	// forgot to initialise
+	.notinit := 3;
+	// out of cpu memory
+	.cpuoom := 4;
+	// out of gpu memory
+	.gpuoom := 5;
+	// fatal error has occurred, gpu state is now corrupt
+	.fatal := 6;
+	// a driver/hardware feature was required but not available. this is a sign the host machine does not support psygpu
+	.reqfailed := 7;
 };
 
 gpu_cull ::= enum

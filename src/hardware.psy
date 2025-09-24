@@ -26,12 +26,31 @@ impl_gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, 
 	pdev_storage : u64 mut? := arena_alloc(a, __sizeof(u64) * array_size);
 	physical_device_count : u32 mut := array_size@_;
 	result ::= vk.enumerate_physical_devices(core.vkinst, ref physical_device_count, pdev_storage);
-	if(result != 0)
+	if(result != zero && (result != (VkResult.VK_INCOMPLETE@s64@_)))
 	{
+		if(result == (VkResult.VK_ERROR_OUT_OF_HOST_MEMORY@s64@_))
+		{
+			return gpu_err
+			{
+				.code := gpu_err_code.cpuoom;
+				.msg := "failed to enumerate vulkan physical devices - not enough host memory";
+			};
+		}
+		if(result == (VkResult.VK_ERROR_OUT_OF_DEVICE_MEMORY@s64@_))
+		{
+			return gpu_err
+			{
+				.code := gpu_err_code.gpuoom;
+				.msg := "failed to enumerate vulkan physical devices - not enough device memory";
+			};
+		}
+		// VK_ERROR_INITIALIZATION_FAILED
+		// VK_ERROR_VALIDATION_FAILED
+		// VK_ERROR_UNKNOWN
 		return gpu_err
 		{
 			.code := gpu_err_code.unknown;
-			.msg := "failed to enumerate vulkan physical devices";
+			.msg := "failed to enumerate vulkan physical devices - internal error";
 		};
 	}
 	
@@ -43,7 +62,7 @@ impl_gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, 
 	return zero;
 };
 
-impl_gpu_use_hardware ::= func(hw : gpu_hardware, window : window -> v0)
+impl_gpu_use_hardware ::= func(hw : gpu_hardware, window : window -> gpu_err)
 {
 	core.target_window = window;
 	pdev ::= hw.native_handle;
@@ -233,7 +252,59 @@ impl_gpu_use_hardware ::= func(hw : gpu_hardware, window : window -> v0)
 		.pEnabledFeatures := zero;
 	};
 
-	vk_check(vk.create_device(pdev, ref create, zero, ref(hardware.used_device)));
+	create_result ::= vk.create_device(pdev, ref create, zero, ref(hardware.used_device));
+	if(create_result != zero)
+	{
+		if(create_result == (VkResult.VK_ERROR_DEVICE_LOST@s64@_))
+		{
+			return gpu_err
+			{
+				.code := gpu_err_code.fatal;
+				.msg := "vulkan logical device creation yielded DEVICE_LOST - this means the hardware itself is lost. perhaps the gpu driver has crashed, or the hardware is no longer available";
+			};
+		}
+		if(create_result == (VkResult.VK_ERROR_EXTENSION_NOT_PRESENT@s64@_))
+		{
+			return gpu_err
+			{
+				.code := gpu_err_code.reqfailed;
+				.msg := "vulkan logical device creation failed - a required extension is not supported";
+			};
+		}
+		if(create_result == (VkResult.VK_ERROR_FEATURE_NOT_PRESENT@s64@_))
+		{
+			return gpu_err
+			{
+				.code := gpu_err_code.reqfailed;
+				.msg := "vulkan logical device creation failed - a required feature is not supported";
+			};
+		}
+		if(create_result == (VkResult.VK_ERROR_OUT_OF_HOST_MEMORY@s64@_))
+		{
+			return gpu_err
+			{
+				.code := gpu_err_code.cpuoom;
+				.msg := "vulkan logical device creation failed  - not enough host memory";
+			};
+		}
+		if(create_result == (VkResult.VK_ERROR_OUT_OF_DEVICE_MEMORY@s64@_))
+		{
+			return gpu_err
+			{
+				.code := gpu_err_code.gpuoom;
+				.msg := "vulkan logical device creation failed - not enough device memory";
+			};
+		}
+		// VK_ERROR_INITIALIZATION_FAILED
+		// VK_ERROR_TOO_MANY_OBJECTS
+		// VK_ERROR_UNKNOWN
+		// VK_ERROR_VALIDATION_FAILED
+		return gpu_err
+		{
+			.code := gpu_err_code.unknown;
+			.msg := "vulkan logical device creation failed - internal error";
+		};
+	}
 	hardware.used_hardware = pdev;
 	impl_label_physical_device(hardware.used_device, hardware.used_hardware, hw.name);
 	hardware.used_qfi = (hw.id);
@@ -303,6 +374,7 @@ impl_gpu_use_hardware ::= func(hw : gpu_hardware, window : window -> v0)
 	putzstr("using ");
 	putzstr(hw.name);
 	putchar(10);
+	return zero;
 };
 
 impl_initialise_pipeline_layout ::= func( -> u64)
