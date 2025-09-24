@@ -458,7 +458,7 @@ impl_vallocator_free_all ::= func( -> v0)
 };
 
 
-impl_bind_image_mem ::= func(image : u64 -> v0)
+impl_bind_image_mem ::= func(image : u64 -> gpu_err)
 {
 	valloc : valloc_t mut? mut := ref (core.vallocator.image_gpu);
 
@@ -468,12 +468,11 @@ impl_bind_image_mem ::= func(image : u64 -> v0)
 	imgsize ::= memreqs.size;
 	if((valloc->cursor + imgsize) > (valloc->size))
 	{
-		putzstr("allocation too large. requested ");
-		putuint(valloc->cursor + imgsize);
-		putzstr("B but there was only ");
-		putuint(valloc->size);
-		putzstr("B remaining.");
-		__debugbreak();
+		return gpu_err
+		{
+			.code := gpu_err_code.gpuoom;
+			.msg := "vulkan image allocation was too large so we have ran out of space";
+		};
 	}
 
 	padding ::= ((memreqs.align) - ((valloc->cursor) % (memreqs.align)) % (memreqs.align));
@@ -492,9 +491,10 @@ impl_bind_image_mem ::= func(image : u64 -> v0)
 	}
 	// todo: align safely.
 	valloc->cursor = (valloc->cursor) + imgsize;
+	return zero;
 };
 
-impl_bind_buffer_mem ::= func(buffer : u64, bufsize : u64, gpu_memory : bool -> u64)
+impl_bind_buffer_mem ::= func(buffer : u64, bufsize : u64, gpu_memory : bool, err : gpu_err mut? -> u64)
 {
 	valloc : valloc_t mut? mut := ref (core.vallocator.buffer_cpu);
 	if(gpu_memory)
@@ -503,12 +503,17 @@ impl_bind_buffer_mem ::= func(buffer : u64, bufsize : u64, gpu_memory : bool -> 
 	}
 	if((valloc->cursor + bufsize) > (valloc->size))
 	{
-		putzstr("allocation too large. requested ");
-		putuint(valloc->cursor + bufsize);
-		putzstr("B but there was only ");
-		putuint(valloc->size);
-		putzstr("B remaining.");
-		__debugbreak();
+		errcode : gpu_err_code mut := gpu_err_code.cpuoom;
+		if(gpu_memory)
+		{
+			errcode = gpu_err_code.gpuoom;
+		}
+		deref(err) = gpu_err
+		{
+			.code := errcode;
+			.msg := "vulkan buffer allocation was too large so we have ran out of space";
+		};
+		return -1;
 	}
 
 	memreqs : VkMemoryRequirements mut;
@@ -529,6 +534,7 @@ impl_bind_buffer_mem ::= func(buffer : u64, bufsize : u64, gpu_memory : bool -> 
 		__debugbreak();
 	}
 	(valloc->cursor) = (valloc->cursor) + bufsize;
+	deref(err) = zero;
 	return offset_from_zero;
 };
 

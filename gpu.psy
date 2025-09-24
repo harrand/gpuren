@@ -67,6 +67,7 @@ gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena 
 	return impl_gpu_create_pass(info, long, short);
 };
 
+// create a gpu buffer for use in one or more passes
 gpu_create_buffer ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource_result)
 {
 	return impl_gpu_create_buffer(info, a);

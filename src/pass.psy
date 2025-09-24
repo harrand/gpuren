@@ -61,7 +61,12 @@ impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : a
 	};
 	vk_check(vk.create_buffer(hardware.used_device, ref meta_create, zero, ref (passptr->metabuf)));
 	(passptr->metabuf_size) = size;
-	impl_bind_buffer_mem(passptr->metabuf, size, true);
+	buffer_alloc_result : gpu_err mut := zero;
+	impl_bind_buffer_mem(passptr->metabuf, size, true, ref buffer_alloc_result);
+	if(buffer_alloc_result.code != zero)
+	{
+		// todo: propagate buffer_alloc_result
+	}
 
 
 	metabuf_prefix ::= "Metabuffer: ";
