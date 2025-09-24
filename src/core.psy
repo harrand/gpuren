@@ -8,6 +8,7 @@ core_state ::= struct
 	frames : frame_data mut[2] mut;
 	scratch : scratch_data mut;
 	vallocator : vallocator_t mut;
+	initialised : bool;
 };
 
 rgba_format ::= 37;
@@ -54,9 +55,16 @@ else
 	is_debug_utils_enabled ::= true;
 }
 
-
-impl_gpu_init ::= func(info : gpu_appinfo -> v0)
+impl_gpu_init ::= func(info : gpu_appinfo -> gpu_err)
 {
+	if(core.initialised)
+	{
+		return gpu_err
+		{
+			.code := gpu_err_code.malformed;
+			.msg := "gpu_init has already been called!";
+		};
+	}
 	GPU_VERSION ::= VK_MAKE_API_VERSION(0, 0, 1, 0);
 	vulkan_init();
 	core.target_window = window.invalid;
@@ -112,12 +120,73 @@ impl_gpu_init ::= func(info : gpu_appinfo -> v0)
 		.ppEnabledExtensionNames := (extensions # 0);
 	};
 
-	vk_check(vk.create_instance(ref create, zero, ref(core.vkinst)));
+	create_result ::= vk.create_instance(ref create, zero, ref(core.vkinst));
+	if(create_result != zero)
+	{
+		if(create_result == (VkResult.VK_ERROR_EXTENSION_NOT_PRESENT@s64@_))
+		{
+			return gpu_err
+			{
+				.code := gpu_err_code.reqfailed;
+				.msg := "vulkan instance creation failed - a required extension is not supported";
+			};
+		}
+		if(create_result == (VkResult.VK_ERROR_LAYER_NOT_PRESENT@s64@_))
+		{
+			return gpu_err
+			{
+				.code := gpu_err_code.reqfailed;
+				.msg := "vulkan instance creation failed - a required layer is not supported";
+			};
+		}
+		if(create_result == (VkResult.VK_ERROR_INCOMPATIBLE_DRIVER@s64@_))
+		{
+			return gpu_err
+			{
+				.code := gpu_err_code.reqfailed;
+				.msg := "vulkan instance creation failed - incompatible driver";
+			};
+		}
+		if(create_result == (VkResult.VK_ERROR_OUT_OF_HOST_MEMORY@s64@_))
+		{
+			return gpu_err
+			{
+				.code := gpu_err_code.cpuoom;
+				.msg := "vulkan instance creation failed - out of host memory";
+			};
+		}
+		if(create_result == (VkResult.VK_ERROR_OUT_OF_DEVICE_MEMORY@s64@_))
+		{
+			return gpu_err
+			{
+				.code := gpu_err_code.gpuoom;
+				.msg := "vulkan instance creation failed - out of device memory";
+			};
+		}
+		// VK_ERROR_INTIALIZATION_FAILED
+		// VK_ERROR_UNKNOWN
+		// VK_ERROR_VALIDATION_FAILED
+		return gpu_err
+		{
+			.code := gpu_err_code.unknown;
+			.msg := "vulkan instance creation failed - internal error";
+		};
+	}
 	vulkan_load_functions(core.vkinst, is_debug_utils_enabled);
+	core.initialised = true;
+	return zero;
 };
 
-impl_gpu_term ::= func( -> v0)
+impl_gpu_term ::= func( -> gpu_err)
 {
+	if(!(core.initialised))
+	{
+		return gpu_err
+		{
+			.code := gpu_err_code.malformed;
+			.msg := "call to gpu_term but we are not gpu_init'd!";
+		};
+	}
 	vk.device_wait_idle(hardware.used_device);
 	if(hardware.pipeline_layout != 0)
 	{
@@ -257,9 +326,10 @@ impl_gpu_term ::= func( -> v0)
 	}
 	vk.destroy_instance(core.vkinst, zero);
 	vulkan_term();
+	return zero;
 };
 
-impl_vallocator_initial_setup ::= func( -> v0)
+impl_vallocator_initial_setup ::= func( -> gpu_err)
 {
 	bda_flags ::= VkMemoryAllocateFlagsInfo
 	{
@@ -282,26 +352,96 @@ impl_vallocator_initial_setup ::= func( -> v0)
 		.allocationSize := valloc_initial_size;
 		.memoryTypeIndex := hardware.used_mti_cpu;
 	};
+	ret : s32 mut := zero;
 
 	// create initial allocations for each case (buffer gpu, image gpu, buffer cpu).
 	bgpu ::= ref(core.vallocator.buffer_gpu);
-	vk_check(vk.allocate_memory(hardware.used_device, ref gpucreate, zero, ref (bgpu->device_mem)));
+	ret = vk.allocate_memory(hardware.used_device, ref gpucreate, zero, ref (bgpu->device_mem));
+	if(ret != zero)
+	{
+		if(ret == (VkResult.VK_ERROR_OUT_OF_DEVICE_MEMORY@s64@_))
+		{
+			return gpu_err
+			{
+				.code := gpu_err_code.gpuoom;
+				.msg := "failed to create vulkan buffer-gpu allocation - out of device memory";
+			};
+		}
+		else
+		{
+			return gpu_err
+			{
+				.code := gpu_err_code.unknown;
+				.msg := "failed to create vulkan buffer-gpu allocation - internal error";
+			};
+		}
+	}
 	bgpu->size = valloc_initial_size;
 	bgpu->cursor = 0;
+
 	impl_label_device_memory(hardware.used_device, bgpu->device_mem, "Buffer GPU Memory");
 	igpu ::= ref(core.vallocator.image_gpu);
-	vk_check(vk.allocate_memory(hardware.used_device, ref gpucreate, zero, ref (igpu->device_mem)));
+	ret = vk.allocate_memory(hardware.used_device, ref gpucreate, zero, ref (igpu->device_mem));
+	if(ret != zero)
+	{
+		if(ret == (VkResult.VK_ERROR_OUT_OF_DEVICE_MEMORY@s64@_))
+		{
+			return gpu_err
+			{
+				.code := gpu_err_code.gpuoom;
+				.msg := "failed to create vulkan image-gpu allocation - out of device memory";
+			};
+		}
+		return gpu_err
+		{
+			.code := gpu_err_code.unknown;
+			.msg := "failed to create vulkan image-gpu allocation - internal error";
+		};
+	}
 	igpu->size = valloc_initial_size;
 	igpu->cursor = 0;
 	impl_label_device_memory(hardware.used_device, igpu->device_mem, "Image GPU Memory");
 
 	bcpu ::= ref(core.vallocator.buffer_cpu);
-	vk_check(vk.allocate_memory(hardware.used_device, ref cpucreate, zero, ref (bcpu->device_mem)));
-	vk_check(vk.map_memory(hardware.used_device, bcpu->device_mem, 0, valloc_initial_size, 0, ref (bcpu->mapped_ptr)));
+	ret = vk.allocate_memory(hardware.used_device, ref cpucreate, zero, ref (bcpu->device_mem));
+	if(ret != zero)
+	{
+		if(ret == (VkResult.VK_ERROR_OUT_OF_HOST_MEMORY@s64@_))
+		{
+			return gpu_err
+			{
+				.code := gpu_err_code.cpuoom;
+				.msg := "failed to create vulkan buffer-cpu allocation - out of host memory";
+			};
+		}
+		return gpu_err
+		{
+			.code := gpu_err_code.unknown;
+			.msg := "failed to create vulkan buffer-cpu allocation - internal error";
+		};
+	}
+	ret = vk.map_memory(hardware.used_device, bcpu->device_mem, 0, valloc_initial_size, 0, ref (bcpu->mapped_ptr));
+	if(ret != zero)
+	{
+		if(ret == (VkResult.VK_ERROR_OUT_OF_HOST_MEMORY@s64@_))
+		{
+			return gpu_err
+			{
+				.code := gpu_err_code.cpuoom;
+				.msg := "failed to persistently-map vulkan buffer-cpu allocation - out of host memory";
+			};
+		}
+		return gpu_err
+		{
+			.code := gpu_err_code.unknown;
+			.msg := "failed to persistently-map vulkan buffer-cpu allocation - internal error";
+		};
+	}
 	
 	bcpu->size = valloc_initial_size;
 	bcpu->cursor = 0;
 	impl_label_device_memory(hardware.used_device, bcpu->device_mem, "Buffer CPU Memory");
+	return zero;
 };
 
 

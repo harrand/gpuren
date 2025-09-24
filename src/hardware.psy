@@ -369,12 +369,7 @@ impl_gpu_use_hardware ::= func(hw : gpu_hardware, window : window -> gpu_err)
 	vk_check(vk.create_fence(hardware.used_device, ref fence_create, zero, ref (core.scratch.fence)));
 
 	hardware.pipeline_layout = impl_initialise_pipeline_layout();
-	impl_vallocator_initial_setup();
-
-	putzstr("using ");
-	putzstr(hw.name);
-	putchar(10);
-	return zero;
+	return impl_vallocator_initial_setup();
 };
 
 impl_initialise_pipeline_layout ::= func( -> u64)
