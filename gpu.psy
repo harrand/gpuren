@@ -14,6 +14,7 @@ gpu_init ::= func(info : gpu_appinfo -> gpu_err)
 	return impl_gpu_init(info);
 };
 
+// terminate psygpu. frees all cpu/gpu memory used by psygpu and invalidates all state. you will need to call gpu_init again to do anything.
 // gpu_err.malformed => you have not called gpu_init or you have called gpu_term twice
 gpu_term ::= func( -> gpu_err)
 {

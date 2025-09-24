@@ -326,6 +326,7 @@ impl_gpu_term ::= func( -> gpu_err)
 	}
 	vk.destroy_instance(core.vkinst, zero);
 	vulkan_term();
+	core.initialised = false;
 	return zero;
 };
 
