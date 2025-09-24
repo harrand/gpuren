@@ -26,14 +26,14 @@ gpu_create_graph ::= func(name : u8?, a : arena mut? -> gpu_graph)
 	return impl_gpu_create_graph(name, a);
 };
 
-gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph -> v0)
+gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph, a : arena mut? -> v0)
 {
-	impl_gpu_graph_add_subgraph(g, subgraph);
+	impl_gpu_graph_add_subgraph(g, subgraph, a);
 };
 
-gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass -> v0)
+gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, a : arena mut? -> v0)
 {
-	impl_gpu_graph_add_pass(g, p);
+	impl_gpu_graph_add_pass(g, p, a);
 };
 
 gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> gpu_err)

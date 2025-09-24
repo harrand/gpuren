@@ -22,13 +22,16 @@ impl_gpu_create_graph ::= func(name : u8?, a : arena mut? -> gpu_graph)
 	return ret@gpu_graph;
 };
 
-impl_gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph -> v0)
+impl_gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph, a : arena mut? -> v0)
 {
 	graphptr ::= graph.data # (g@s64);
-	if(((graphptr->timeline_count) + 1) > (graphptr->timeline_cap))
+	if((graphptr->timeline_count) >= (graphptr->timeline_cap))
 	{
-		putzstr("graph ran out of entries in timeline. todo: expand timeline array");
-		__debugbreak();
+		olddata ::= graphptr->timeline;
+		oldcap ::= graphptr->timeline_cap;
+		graphptr->timeline_cap = (oldcap * 2);
+		graphptr->timeline = arena_alloc(a, __sizeof(graph_entry) * (graphptr->timeline_cap));
+		memcopy(graphptr->timeline, olddata, __sizeof(graph_entry) * oldcap);
 	}
 	cur ::= graphptr->timeline_count;
 	entry_ptr ::= (graphptr->timeline) # cur;
@@ -37,13 +40,16 @@ impl_gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph -> v0)
 	(graphptr->timeline_count) = (graphptr->timeline_count) + 1;
 };
 
-impl_gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass -> v0)
+impl_gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, a : arena mut? -> v0)
 {
 	graphptr ::= graph.data # (g@s64);
-	if(((graphptr->timeline_count) + 1) > (graphptr->timeline_cap))
+	if((graphptr->timeline_count) >= (graphptr->timeline_cap))
 	{
-		putzstr("graph ran out of entries in timeline. todo: expand timeline array");
-		__debugbreak();
+		olddata ::= graphptr->timeline;
+		oldcap ::= graphptr->timeline_cap;
+		graphptr->timeline_cap = (oldcap * 2);
+		graphptr->timeline = arena_alloc(a, __sizeof(graph_entry) * (graphptr->timeline_cap));
+		memcopy(graphptr->timeline, olddata, __sizeof(graph_entry) * oldcap);
 	}
 	cur ::= graphptr->timeline_count;
 	entry_ptr ::= (graphptr->timeline) # cur;
