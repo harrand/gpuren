@@ -67,12 +67,12 @@ gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena 
 	return impl_gpu_create_pass(info, long, short);
 };
 
-gpu_create_buffer ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource)
+gpu_create_buffer ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource_result)
 {
 	return impl_gpu_create_buffer(info, a);
 };
 
-gpu_create_image ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource)
+gpu_create_image ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource_result)
 {
 	return impl_gpu_create_image(info, a);
 };
@@ -283,6 +283,12 @@ gpu_resource ::= enum
 {
 	.invalid := -1;
 	.window_resource := -2;
+};
+
+gpu_resource_result ::= struct
+{
+	res : gpu_resource;
+	err : gpu_err;
 };
 
 gpu_shader_sources ::= struct

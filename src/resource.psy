@@ -19,20 +19,36 @@ resource_data_t ::= struct
 
 };
 
-impl_gpu_create_buffer ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource)
+impl_gpu_create_buffer ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource_result)
 {
-	retid ::= resource.count;
+	retid ::= resource.count@u64 mut;
 	resptr ::= impl_alloc_new_resource(a);
-	impl_init_buffer(resptr, info, a);
-	return retid@gpu_resource;
+	err ::= impl_init_buffer(resptr, info, a);
+	if(err.code != zero)
+	{
+		retid = -1;
+	}
+	return gpu_resource_result
+	{
+		.res := retid@gpu_resource;
+		.err := err;
+	};
 };
 
-impl_gpu_create_image ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource)
+impl_gpu_create_image ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource_result)
 {
-	retid ::= resource.count;
+	retid ::= resource.count@u64 mut;
 	resptr ::= impl_alloc_new_resource(a);
-	impl_init_image(resptr, info, a);
-	return retid@gpu_resource;
+	err ::= impl_init_image(resptr, info, a);
+	if(err.code != zero)
+	{
+		retid = -1;
+	}
+	return gpu_resource_result
+	{
+		.res := retid@gpu_resource;
+		.err := err;
+	};
 };
 
 impl_gpu_resource_write ::= func(res : gpu_resource, data : v0? weak, data_size : u64, offset : u64 -> v0)
@@ -276,7 +292,7 @@ impl_write_resources ::= func(passptr : pass_data_t mut?, long : arena mut?, sho
 	}
 };
 
-impl_init_buffer ::= func(resptr : resource_data_t mut?, info : gpu_resource_info, a : arena mut? -> v0)
+impl_init_buffer ::= func(resptr : resource_data_t mut?, info : gpu_resource_info, a : arena mut? -> gpu_err)
 {
 	resptr->info = info;
 	resptr->is_buffer = true;
@@ -342,9 +358,10 @@ impl_init_buffer ::= func(resptr : resource_data_t mut?, info : gpu_resource_inf
 	{
 		impl_label_buffer(hardware.used_device, resptr->vk_handle, info.name);
 	}
+	return zero;
 };
 
-impl_init_image ::= func(resptr : resource_data_t mut?, info : gpu_resource_info, a : arena mut? -> v0)
+impl_init_image ::= func(resptr : resource_data_t mut?, info : gpu_resource_info, a : arena mut? -> gpu_err)
 {
 	resptr->info = info;
 	resptr->is_buffer = false;
@@ -468,6 +485,7 @@ impl_init_image ::= func(resptr : resource_data_t mut?, info : gpu_resource_info
 		memcopy(view_debug_name_str # prefixlen, info.name, namelen);
 		impl_label_view(hardware.used_device, resptr->image_view, view_debug_name_str);
 	}
+	return zero;
 };
 
 impl_alloc_new_resource ::= func(a : arena mut? -> resource_data_t mut?)
