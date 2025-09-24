@@ -62,7 +62,7 @@ gpu_use_hardware ::= func(hw : gpu_hardware, window : window -> gpu_err)
 	return impl_gpu_use_hardware(hw, window);
 };
 
-gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena mut? -> gpu_pass)
+gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena mut? -> gpu_pass_result)
 {
 	return impl_gpu_create_pass(info, long, short);
 };
@@ -241,6 +241,12 @@ gpu_pass ::= enum
 {
 	.invalid := -1;
 	.present := -2;
+};
+
+gpu_pass_result ::= struct
+{
+	res : gpu_pass;
+	err : gpu_err;
 };
 
 gpu_buffer_flag ::= enum

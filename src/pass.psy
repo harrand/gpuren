@@ -23,7 +23,7 @@ pass_data_t ::= struct
 };
 
 
-impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena mut? -> gpu_pass)
+impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena mut? -> gpu_pass_result)
 {
 	retid ::= pass.count;
 	passptr ::= impl_alloc_new_pass(long);
@@ -127,7 +127,11 @@ impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : a
 	impl_write_resources(passptr, long, short);
 	impl_populate_descriptors(passptr, long, short);
 
-	return retid@gpu_pass;
+	return gpu_pass_result
+	{
+		.res := retid@gpu_pass;
+		.err := zero;
+	};
 };
 
 impl_alloc_new_pass ::= func(a : arena mut? -> pass_data_t mut?)
