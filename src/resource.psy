@@ -102,6 +102,19 @@ impl_gpu_resource_mapping ::= func(res : gpu_resource -> u8 mut?)
 	return resptr->mapped_ptr@_;
 };
 
+impl_gpu_map_resource ::= func(res : gpu_resource -> arena)
+{
+	resptr ::= resource.data # (res@s64);
+	rinfo ::= resptr->info;
+	is_dynamic_buffer ::= (((rinfo.buffer_flags) & (gpu_buffer_flag.dynamic)) != zero) && resptr->is_buffer;
+	if(!is_dynamic_buffer)
+	{
+		putzstr("gpu_map_resource only callable on dynamic buffers");
+		__debugbreak();
+	}
+	return arena_create_preallocated(resptr->mapped_ptr, rinfo.data_size);
+};
+
 impl_gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena mut?, short : arena mut? -> v0)
 {
 	resptr ::= resource.data # (res@s64);

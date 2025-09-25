@@ -26,19 +26,26 @@ gpu_create_graph ::= func(name : u8?, a : arena mut? -> gpu_graph)
 	return impl_gpu_create_graph(name, a);
 };
 
-gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph, a : arena mut? -> v0)
+gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph, a : arena mut? -> u64)
 {
-	impl_gpu_graph_add_subgraph(g, subgraph, a);
+	return impl_gpu_graph_add_subgraph(g, subgraph, a);
 };
 
-gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, a : arena mut? -> v0)
+gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, a : arena mut? -> u64)
 {
-	impl_gpu_graph_add_pass(g, p, a);
+	return impl_gpu_graph_add_pass(g, p, a);
 };
 
+// execute the gpu work (async) associated with a graph.
 gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> gpu_err)
 {
 	return impl_gpu_execute(g, long, short);
+};
+
+// blocks the current thread until all gpu work associated with the graph to fully complete.
+gpu_wait ::= func(g : gpu_graph -> v0)
+{
+	return impl_gpu_wait(g);
 };
 
 gpu_hardware_count ::= func( -> u64)
@@ -98,21 +105,38 @@ gpu_resource_mapping ::= func(res : gpu_resource -> u8 mut?)
 	return impl_gpu_resource_mapping(res);
 };
 
+gpu_map_resource ::= func(res : gpu_resource -> arena)
+{
+	return impl_gpu_map_resource(res);
+};
+
+// resizes a buffer.
+// res => resource to resize. must be a buffer
+// new_size => new size of the resource, in bytes
+// long => arena which must outlive the buffer's lifetime
+// short => scratch arena which can be cleared at any time
+// [invalidates all previous mappings and mapped arenas]
 gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena mut?, short : arena mut? -> v0)
 {
 	impl_gpu_resize_buffer(res, new_size, long, short);
 };
 
+// helper function that loads some .spv files from the file system
+// vertex_spv_path => relative path to a .spv for the vertex shader. must exist.
+// fragment_spv_path => relative path to a .spv for the fragment shader. must exist.
+// a => arena whose lifetime constraints the result
 gpu_load_shader_files ::= func(vertex_spv_path : u8?, fragment_spv_path : u8?, a : arena mut? -> gpu_shader_sources)
 {
 	return impl_gpu_load_shader_files(vertex_spv_path, fragment_spv_path, a);
 };
 
+// create a shader program from a vertex and fragment spv data
 gpu_create_graphics_shader ::= func(vertex_source : u8?, vertex_source_len : u64, fragment_source : u8?, fragment_source_len : u64, a : arena mut? -> gpu_shader)
 {
 	return impl_gpu_create_graphics_shader(vertex_source, vertex_source_len, fragment_source, fragment_source_len, a);
 };
 
+// create a shader program from a compute spv data
 gpu_create_compute_shader ::= func(compute_source : u8?, compute_source_len : u64, a : arena mut? -> gpu_shader)
 {
 	return impl_gpu_create_compute_shader(compute_source, compute_source_len, a);

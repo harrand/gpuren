@@ -22,7 +22,7 @@ impl_gpu_create_graph ::= func(name : u8?, a : arena mut? -> gpu_graph)
 	return ret@gpu_graph;
 };
 
-impl_gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph, a : arena mut? -> v0)
+impl_gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph, a : arena mut? -> u64)
 {
 	graphptr ::= graph.data # (g@s64);
 	if((graphptr->timeline_count) >= (graphptr->timeline_cap))
@@ -38,9 +38,10 @@ impl_gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph, a : ar
 	(entry_ptr->handle) = (subgraph@s64@_);
 	entry_ptr->is_graph = true;
 	(graphptr->timeline_count) = (graphptr->timeline_count) + 1;
+	return cur;
 };
 
-impl_gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, a : arena mut? -> v0)
+impl_gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, a : arena mut? -> u64)
 {
 	graphptr ::= graph.data # (g@s64);
 	if((graphptr->timeline_count) >= (graphptr->timeline_cap))
@@ -56,9 +57,9 @@ impl_gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, a : arena mut? -> 
 	(entry_ptr->handle) = (p@s64@_);
 	entry_ptr->is_graph = false;
 	(graphptr->timeline_count) = (graphptr->timeline_count) + 1;
+	return cur;
 };
 
-// todo: take in render graph and go through the passes in that order instead.
 impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> gpu_err)
 {
 	ret : gpu_err mut := zero;
@@ -256,6 +257,13 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 
 	core.current_frame = ((core.current_frame + 1) % 2);
 	return ret;
+};
+
+impl_gpu_wait ::= func(g : gpu_graph -> v0)
+{
+	// haha sike i dont care about the graph you gave me
+	// im just gonna wait till *all* work is done
+	vk.device_wait_idle(hardware.used_device);
 };
 
 graph_entry ::= struct
