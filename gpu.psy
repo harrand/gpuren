@@ -110,7 +110,7 @@ gpu_map_resource ::= func(res : gpu_resource -> gpu_map_resource_result)
 	return impl_gpu_map_resource(res);
 };
 
-// resizes a buffer.
+// resizes a buffer. attempts to preserve old data
 // res => resource to resize. must be a buffer
 // new_size => new size of the resource, in bytes
 // long => arena which must outlive the buffer's lifetime
@@ -119,6 +119,17 @@ gpu_map_resource ::= func(res : gpu_resource -> gpu_map_resource_result)
 gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena mut?, short : arena mut? -> v0)
 {
 	impl_gpu_resize_buffer(res, new_size, long, short);
+};
+
+// resizes an image. does not preserve old data - the new image memory is entirely zero'd
+// res => resource to resize. must be an image
+// new_dimensions => new dimensions of the resource, in [width, height] pixels
+// long => arena which must outlive the buffer's lifetime
+// short => scratch arena which can be cleared at any time
+// [guaranteed to early-out if new_dimensions are the same as the old dimensions]
+gpu_resize_image ::= func(res : gpu_resource, new_dimensions : u32[2], long : arena mut?, short : arena mut? -> v0)
+{
+	impl_gpu_resize_image(res, new_dimensions, long, short);
 };
 
 // helper function that loads some .spv files from the file system

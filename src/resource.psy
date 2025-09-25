@@ -171,6 +171,45 @@ impl_gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena
 	}
 };
 
+impl_gpu_resize_image ::= func(res : gpu_resource, new_dimensions : u32[2], long : arena mut?, short : arena mut? -> v0)
+{
+	resptr ::= resource.data # (res@s64);
+	oldinfo ::= resptr->info;
+	olddata ::= oldinfo.data;
+	olddims ::= oldinfo.image_dimensions;
+
+	// if dimensions match dont do anything
+	if((deref(new_dimensions # 0) == deref(olddims # 0)) && (deref(new_dimensions # 1) == deref(olddims # 1)))
+	{
+		return;
+	}
+
+	// if the dimensions change then the data currently sitting in the resource really doesnt make any sense anymore
+	// let's clear it all out
+	resptr->info.data_size = zero;
+	resptr->info.data = zero;
+	resptr->info.image_dimensions = new_dimensions;
+	resptr->info.flags = (resptr->info.flags | (gpu_resource_flag.zero_memory));
+
+	vk.device_wait_idle(hardware.used_device);
+	vk.destroy_buffer(hardware.used_device, resptr->vk_handle, zero);
+
+	impl_init_image(resptr, oldinfo, long);
+
+	// problem is, all the passes that use this image as a resource will need to have their descriptors rewritten.
+	// solution:
+	// for all passes, if they contained this image, rewrite their resources + repopulate their descriptors.
+	counter : u64 mut;
+	for(counter = 0, counter < (pass.count), counter = counter + 1)
+	{
+		if(impl_pass_uses_resource(counter@s64@gpu_pass, res))
+		{
+			impl_write_resources(pass.data # counter, long, short);
+			impl_populate_descriptors(pass.data # counter, long, short);
+		}
+	}
+};
+
 impl_cpu_gpu_transfer ::= func(dst_gpu_res : u64, dst_gpu_is_buffer : bool, src_data : u8? weak, src_data_size : u64, image_dimensions : u32[2], dst_offset : u64 -> gpu_err)
 {
 	vk.device_wait_idle(hardware.used_device);
