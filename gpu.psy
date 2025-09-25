@@ -100,12 +100,12 @@ gpu_resource_size ::= func(res : gpu_resource -> u64)
 	return impl_gpu_resource_size(res);
 };
 
-gpu_resource_mapping ::= func(res : gpu_resource -> u8 mut?)
+gpu_resource_pointer ::= func(res : gpu_resource -> gpu_resource_pointer_result)
 {
-	return impl_gpu_resource_mapping(res);
+	return impl_gpu_resource_pointer(res);
 };
 
-gpu_map_resource ::= func(res : gpu_resource -> arena)
+gpu_map_resource ::= func(res : gpu_resource -> gpu_map_resource_result)
 {
 	return impl_gpu_map_resource(res);
 };
@@ -290,6 +290,18 @@ gpu_resource_flag ::= enum
 { 
 	// ignore gpu_resource_info.data, fill size with zeroes.
 	.zero_memory := 0b00000001;
+};
+
+gpu_resource_pointer_result ::= struct
+{
+	ptr : u8 mut? weak;
+	err : gpu_err;
+};
+
+gpu_map_resource_result ::= struct
+{
+	mapping : arena;
+	err : gpu_err;
 };
 
 gpu_image_type ::= enum

@@ -16,7 +16,6 @@ resource_data_t ::= struct
 	sampler : u64;
 	buffer_device_address : u64;
 	mapped_ptr : v0 mut? weak;
-
 };
 
 impl_gpu_create_buffer ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource_result)
@@ -89,22 +88,43 @@ impl_gpu_resource_size ::= func(res : gpu_resource -> u64)
 	return rinfo.data_size;
 };
 
-impl_gpu_resource_mapping ::= func(res : gpu_resource -> u8 mut?)
+impl_gpu_resource_pointer ::= func(res : gpu_resource -> gpu_resource_pointer_result)
 {
 	resptr ::= resource.data # (res@s64);
 	rinfo ::= resptr->info;
 	is_dynamic_buffer ::= (((rinfo.buffer_flags) & (gpu_buffer_flag.dynamic)) != zero) && resptr->is_buffer;
+	err : gpu_err mut := zero;
 	if(!is_dynamic_buffer)
 	{
-		putzstr("gpu_resource_mapping only callable on dynamic buffers");
-		__debugbreak();
+		err = gpu_err
+		{
+			.code := gpu_err_code.malformed;
+			.msg := "gpu_resource_pointer only useable on dynamic buffers";
+		};
 	}
-	return resptr->mapped_ptr@_;
+	return gpu_resource_pointer_result
+	{
+		.ptr := resptr->mapped_ptr@_;
+		.err := err;
+	};
 };
 
-impl_gpu_map_resource ::= func(res : gpu_resource -> arena)
+impl_gpu_map_resource ::= func(res : gpu_resource -> gpu_map_resource_result)
 {
-	return arena_create_preallocated(impl_gpu_resource_mapping(res), impl_gpu_resource_size(res));
+	pointer_result ::= impl_gpu_resource_pointer(res);
+	if(pointer_result.err.code != zero)
+	{
+		return gpu_map_resource_result
+		{
+			.mapping := zero;
+			.err := pointer_result.err;
+		};
+	}
+	return gpu_map_resource_result
+	{
+		.mapping := arena_create_preallocated(pointer_result.ptr, impl_gpu_resource_size(res));
+		.err := zero;
+	};
 };
 
 impl_gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena mut?, short : arena mut? -> v0)
