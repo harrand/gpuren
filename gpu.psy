@@ -45,7 +45,7 @@ gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> gpu
 // blocks the current thread until all gpu work associated with the graph to fully complete.
 gpu_wait ::= func(g : gpu_graph -> v0)
 {
-	return impl_gpu_wait(g);
+	impl_gpu_wait(g);
 };
 
 gpu_hardware_count ::= func( -> u64)
