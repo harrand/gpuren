@@ -15,6 +15,7 @@ pass_data_t ::= struct
 	metabuf_size : u64;
 	is_compute : bool;
 	pipeline : u64;
+	event : u64;
 
 	targets_swapchain : bool;
 	colour_target_dimensions : u32[2];
@@ -67,7 +68,6 @@ impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : a
 	{
 		// todo: propagate buffer_alloc_result
 	}
-
 
 	metabuf_prefix ::= "Metabuffer: ";
 	prefixlen ::= zstrlen(metabuf_prefix);
@@ -123,6 +123,8 @@ impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : a
 
 		(passptr->colour_target_dimensions) = impl_get_pass_colour_target_dimensions(passptr);
 	}
+
+	passptr->event = impl_create_empty_event();
 
 	impl_write_resources(passptr, long, short);
 	impl_populate_descriptors(passptr, long, short);
@@ -495,3 +497,15 @@ impl_pass_uses_resource ::= func(p : gpu_pass, res : gpu_resource -> bool)
 	return false;
 };
 
+impl_create_empty_event ::= func(-> u64)
+{
+	create ::= VkEventCreateInfo
+	{
+		.sType := 10;
+		.pNext := zero;
+		.flags := zero;
+	};
+	evt : u64 mut;
+	vk.create_event(hardware.used_device, ref create, zero, ref evt);
+	return evt;
+};

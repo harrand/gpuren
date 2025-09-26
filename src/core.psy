@@ -265,6 +265,7 @@ impl_gpu_term ::= func( -> gpu_err)
 		passptr = pass.data # counter;	
 		vk.destroy_buffer(hardware.used_device, passptr->metabuf, zero);
 		vk.destroy_pipeline(hardware.used_device, passptr->pipeline, zero);
+		vk.destroy_event(hardware.used_device, passptr->event, zero);
 	}
 	pass.count = 0;
 
