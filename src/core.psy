@@ -258,6 +258,14 @@ impl_gpu_term ::= func( -> gpu_err)
 		swapchain.system_depth_image = 0;
 	}
 
+	// destroy all graphs
+	graphptr : graph_data_t mut? mut;
+	for(counter = 0, counter < (graph.count), counter = counter + 1)
+	{
+		graphptr = graph.data # counter;
+		vk.destroy_event(hardware.used_device, graphptr->event, zero);
+	}
+
 	// destroy all passes
 	passptr : pass_data_t mut? mut;
 	for(counter = 0, counter < (pass.count), counter = counter + 1)
@@ -840,3 +848,28 @@ impl_end_and_execute_scratch_commands ::= func( -> v0)
 	vk_check(vk.reset_fences(hardware.used_device, 1, ref (core.scratch.fence)));
 };
 
+static if(_win32)
+{
+	Sleep ::= func(dwMilliseconds : u32 -> v0) := extern;
+}
+
+impl_host_wait_event ::= func(event : u64, poll_interval_ms : u32 -> v0)
+{
+	while(true)
+	{
+		result ::= vk.get_event_status(hardware.used_device, event);
+		if(result == (VkResult.VK_EVENT_SET@s64@_))
+		{
+			return;
+		}
+		// sleepy time (or spin...)
+		static if(_win32)
+		{
+			Sleep(poll_interval_ms);
+		}
+		else
+		{
+			__error("todo: fixme on linux");
+		}
+	}
+};

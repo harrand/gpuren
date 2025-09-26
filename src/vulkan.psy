@@ -1137,6 +1137,9 @@ vk_functions_t ::= struct
 
 	create_event : func(device : u64, pCreateInfo : VkEventCreateInfo?, pAllocator : VkAllocationCallbacks?, pEvent : u64 mut? -> s32);
 	destroy_event : func(device : u64, event : u64, pAllocator : VkAllocationCallbacks -> v0);
+	get_event_status : func(device : u64, event : u64 -> s32);
+	reset_event : func(device : u64, event : u64 -> s32);
+	set_event : func(device : u64, event : u64 -> s32);
 
 	enumerate_physical_devices : func(instance : u64, pPhysicalDeviceCount : u32 mut?, pPhysicalDevices : u64 mut? -> s32);
 	get_physical_device_properties : func(physicalDevice : u64, pProperties : VkPhysicalDeviceProperties mut? -> v0);
@@ -1297,6 +1300,9 @@ vulkan_load_functions ::= func(instance : u64, debug_utils_enabled : bool -> v0)
 
 	vk.create_event = load_vk_fn("vkCreateEvent", instance);
 	vk.destroy_event = load_vk_fn("vkDestroyEvent", instance);
+	vk.get_event_status = load_vk_fn("vkGetEventStatus", instance);
+	vk.reset_event = load_vk_fn("vkResetEvent", instance);
+	vk.set_event = load_vk_fn("vkSetEvent", instance);
 
 	vk.enumerate_physical_devices = load_vk_fn("vkEnumeratePhysicalDevices", instance);
 	vk.get_physical_device_properties = load_vk_fn("vkGetPhysicalDeviceProperties", instance);

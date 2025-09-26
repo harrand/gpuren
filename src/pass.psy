@@ -503,6 +503,7 @@ impl_create_empty_event ::= func(-> u64)
 	{
 		.sType := 10;
 		.pNext := zero;
+		// note: if we want to remove the ability to have the host wait (i.e delete impl_host_wait_event and gpu_wait) then pass VK_EVENT_CREATE_DEVICE_ONLY_BIT
 		.flags := zero;
 	};
 	evt : u64 mut;
