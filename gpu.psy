@@ -31,9 +31,9 @@ gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph, a : arena m
 	return impl_gpu_graph_add_subgraph(g, subgraph, a);
 };
 
-gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, a : arena mut? -> u64)
+gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, dependencies : u64 mut?, dependencies_count : u64, a : arena mut? -> u64)
 {
-	return impl_gpu_graph_add_pass(g, p, a);
+	return impl_gpu_graph_add_pass(g, p, dependencies, dependencies_count, a);
 };
 
 // execute the gpu work (async) associated with a graph.

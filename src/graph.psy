@@ -19,6 +19,8 @@ impl_gpu_create_graph ::= func(name : u8?, a : arena mut? -> gpu_graph)
 	graphptr->timeline = arena_alloc(a, __sizeof(graph_entry) * initial_timeline_capacity);
 	graphptr->timeline_count = 0;
 	graphptr->timeline_cap = initial_timeline_capacity;
+	graphptr->dependencies = arena_alloc(a, __sizeof(u64 mut?) * initial_timeline_capacity);
+	graphptr->dependency_counts = arena_alloc(a, __sizeof(u64) * initial_timeline_capacity);
 	return ret@gpu_graph;
 };
 
@@ -32,16 +34,28 @@ impl_gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph, a : ar
 		graphptr->timeline_cap = (oldcap * 2);
 		graphptr->timeline = arena_alloc(a, __sizeof(graph_entry) * (graphptr->timeline_cap));
 		memcopy(graphptr->timeline, olddata, __sizeof(graph_entry) * oldcap);
+
+		olddepdata ::= graphptr->dependencies;
+		olddepcountdata ::= graphptr->dependency_counts;
+		// remember we do indeed use oldcap here, not dependencies_count
+		graphptr->dependencies = arena_alloc(a, __sizeof(u64 mut?) * (graphptr->timeline_cap));
+		memcopy(graphptr->dependencies, olddepdata, __sizeof(u64 mut?) * oldcap);
+		graphptr->dependency_counts = arena_alloc(a, __sizeof(u64) * (graphptr->timeline_cap));
+		memcopy(graphptr->dependency_counts, olddepcountdata, __sizeof(u64) * oldcap);
 	}
 	cur ::= graphptr->timeline_count;
 	entry_ptr ::= (graphptr->timeline) # cur;
 	(entry_ptr->handle) = (subgraph@s64@_);
 	entry_ptr->is_graph = true;
 	(graphptr->timeline_count) = (graphptr->timeline_count) + 1;
+	
+	// todo: dependencies for subgraphs? probably super cursed and hard
+	deref(graphptr->dependencies # cur) = zero;
+	deref(graphptr->dependency_counts # cur) = zero;
 	return cur;
 };
 
-impl_gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, a : arena mut? -> u64)
+impl_gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, dependencies : u64?, dependencies_count : u64, a : arena mut? -> u64)
 {
 	graphptr ::= graph.data # (g@s64);
 	if((graphptr->timeline_count) >= (graphptr->timeline_cap))
@@ -51,12 +65,29 @@ impl_gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, a : arena mut? -> 
 		graphptr->timeline_cap = (oldcap * 2);
 		graphptr->timeline = arena_alloc(a, __sizeof(graph_entry) * (graphptr->timeline_cap));
 		memcopy(graphptr->timeline, olddata, __sizeof(graph_entry) * oldcap);
+
+		olddepdata ::= graphptr->dependencies;
+		olddepcountdata ::= graphptr->dependency_counts;
+		// remember we do indeed use oldcap here, not dependencies_count
+		graphptr->dependencies = arena_alloc(a, __sizeof(u64 mut?) * (graphptr->timeline_cap));
+		memcopy(graphptr->dependencies, olddepdata, __sizeof(u64 mut?) * oldcap);
+		graphptr->dependency_counts = arena_alloc(a, __sizeof(u64) * (graphptr->timeline_cap));
+		memcopy(graphptr->dependency_counts, olddepcountdata, __sizeof(u64) * oldcap);
 	}
 	cur ::= graphptr->timeline_count;
 	entry_ptr ::= (graphptr->timeline) # cur;
 	(entry_ptr->handle) = (p@s64@_);
 	entry_ptr->is_graph = false;
 	(graphptr->timeline_count) = (graphptr->timeline_count) + 1;
+
+	deref(graphptr->dependencies # cur) = arena_alloc(a, __sizeof(u64) * dependencies_count);
+	i : u64 mut;
+	for(i = 0, i < dependencies_count, i = i + 1)
+	{
+		deref(deref(graphptr->dependencies # cur) # i) = deref(dependencies # i);
+	}
+	
+	deref(graphptr->dependency_counts # cur) = dependencies_count;
 	return cur;
 };
 
@@ -278,6 +309,8 @@ graph_data_t ::= struct
 	timeline : graph_entry mut?;
 	timeline_count : u64;
 	timeline_cap : u64;
+	dependencies : u64 mut? mut?;
+	dependency_counts : u64 mut?;
 };
 
 // implementation details
