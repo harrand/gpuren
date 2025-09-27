@@ -167,6 +167,7 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 	for(counter = 0, counter < (graphptr->timeline_count), counter = counter + 1)
 	{
 		cur_entry = deref((graphptr->timeline) # counter);
+		impl_wait_dependencies(graphptr, counter, short);
 		// todo: dependencies
 		// firstly get all the dependencies
 		// collaborate all their event u64s (both passes and subgraphs) in a single array
@@ -190,6 +191,7 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 		// todo: dependencies
 		// get our event and do a vkCmdSetEvent on it
 		// (note: if you deicde to support signalling events from the host the stage mask will also need VK_PIPELINE_STAGE_HOST_BIT though i doubt we will use this. host waiting instead of signalling is more likely which i have already implemented via impl_host_wait_event)
+		impl_notify_dependencies(graphptr, counter);
 	}
 
 	// if we just wrote to the system image:
@@ -301,9 +303,34 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 
 impl_gpu_wait ::= func(g : gpu_graph -> v0)
 {
-	// haha sike i dont care about the graph you gave me
-	// im just gonna wait till *all* work is done
-	vk.device_wait_idle(hardware.used_device);
+	poll_interval_ms ::= 1;
+
+	graphdata ::= graph.data # (g@s64);
+	i : u64 mut;
+	for(i = 0, i < (graphdata->timeline_count), i = i + 1)
+	{
+		cur_entry ::= deref(graphdata->timeline # i);
+		handle ::= cur_entry.handle;
+		if(cur_entry.is_graph)
+		{
+			if(impl_graph_is_real(handle@s64@gpu_graph))
+			{
+				as_graph ::= deref(graph.data # (handle@s64));
+				impl_host_wait_event(as_graph.event, poll_interval_ms);
+			}
+		}
+		else
+		{
+			if(impl_pass_is_real(handle@s64@gpu_pass))
+			{
+				as_pass ::= deref(pass.data # (handle@s64));
+				impl_host_wait_event(as_pass.event, poll_interval_ms);
+			}
+		}
+	}
+
+	// if this ends up bugged horribly, here's an evil cop-out:
+	// vk.device_wait_idle(hardware.used_device);
 };
 
 graph_entry ::= struct
@@ -393,4 +420,96 @@ impl_alloc_new_graph ::= func(a : arena mut? -> graph_data_t mut?)
 impl_record_subgraph_work ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> gpu_err)
 {
 	return gpu_err{.code := gpu_err_code.unknown; .msg := "subgraphs are nyi";};
+};
+
+impl_wait_dependencies ::= func(g : graph_data_t mut?, idx : u64, short : arena mut? -> v0)
+{
+	my_entry ::= (g->timeline # idx);
+	my_handle ::= my_entry->handle;
+	if(my_handle == (gpu_pass.present@s64@_))
+	{
+		return;
+	}
+	// we're going to iterate over all dependencies
+	deps ::= deref(g->dependencies # idx);
+	deps_count ::= deref(g->dependency_counts # idx);
+
+	// make an array to store all the events we're gonna wait on
+	event_array : u64 mut? := arena_alloc(short, __sizeof(u64) * deps_count);
+
+	// populate event_array
+	i : u64 mut;
+	skip_count : u64 mut := 0;
+	for(i = 0, i < deps_count, i = i + 1)
+	{
+		depidx ::= deref(deps # (i - skip_count));
+		dep_entry ::= (g->timeline # depidx);
+		handle ::= dep_entry->handle;
+		if(dep_entry->is_graph)
+		{
+			if(impl_graph_is_real(handle@s64@gpu_graph))
+			{
+				as_graph ::= deref(graph.data # (handle@s64));
+				deref(event_array # i) = (as_graph.event);
+			}
+			else
+			{
+				skip_count = skip_count + 1;
+			}
+		}
+		else
+		{
+			if(impl_pass_is_real(handle@s64@gpu_pass))
+			{
+				as_pass ::= deref(pass.data # (handle@s64));
+				deref(event_array # i) = (as_pass.event);
+			}
+			else
+			{
+				skip_count = skip_count + 1;
+			}
+		}
+	}
+
+	VK_PIPELINE_STAGE_ALL_COMMANDS_BIT ::= 0x00010000;
+	// do vulkan wait
+	frame ::= deref(core.frames # (core.current_frame));
+	if(deps_count > 0)
+	{
+		vk.cmd_wait_events(frame.cmds, (deps_count - skip_count)@_, event_array, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, zero, zero, zero, zero, zero, zero);
+	}
+};
+
+impl_notify_dependencies ::= func(g : graph_data_t mut?, idx : u64 -> v0)
+{
+	event : u64 mut;
+
+	entry ::= (g->timeline # idx);
+	handle ::= entry->handle;
+	if(entry->is_graph)
+	{
+		if(!impl_graph_is_real(handle@s64@gpu_graph))
+		{
+			return;
+		}
+		as_graph ::= deref(graph.data # (handle@s64));
+		event = (as_graph.event);
+	}
+	else
+	{
+		if(!impl_pass_is_real(handle@s64@gpu_pass))
+		{
+			return;
+		}
+		as_pass ::= deref(pass.data # (handle@s64));
+		event = (as_pass.event);
+	}
+	frame ::= deref(core.frames # (core.current_frame));
+	VK_PIPELINE_STAGE_ALL_COMMANDS_BIT ::= 0x00010000;
+	vk.cmd_set_event(frame.cmds, event, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+};
+
+impl_graph_is_real ::= func(g : gpu_graph -> bool)
+{
+	return g != (gpu_graph.invalid);
 };

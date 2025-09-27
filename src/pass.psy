@@ -510,3 +510,8 @@ impl_create_empty_event ::= func(-> u64)
 	vk.create_event(hardware.used_device, ref create, zero, ref evt);
 	return evt;
 };
+
+impl_pass_is_real ::= func(g : gpu_pass -> bool)
+{
+	return (g != (gpu_pass.invalid)) && ((g != (gpu_pass.present)));
+};
