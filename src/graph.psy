@@ -97,6 +97,7 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 {
 	ret : gpu_err mut := zero;
 	graphptr ::= graph.data # (g@s64);
+	vk.reset_event(hardware.used_device, graphptr->event);
 	writes_to_system_image ::= impl_graph_writes_to_system_image(g);
 	will_present ::= impl_graph_will_present(g);
 
@@ -260,6 +261,9 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 		vk.cmd_pipeline_barrier(frame.cmds, 0x00001000, 0x00000001, 0, 0, zero, 0, zero, 1, ref barrier);
 	}
 
+	VK_PIPELINE_STAGE_ALL_COMMANDS_BIT ::= 0x00010000;
+	vk.cmd_set_event(frame.cmds, graphptr->event, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+
 	vk_check(vk.end_command_buffer(frame.cmds));
 	wait_stage : s32 := 0;
 	submit ::= VkSubmitInfo
@@ -306,31 +310,7 @@ impl_gpu_wait ::= func(g : gpu_graph -> v0)
 	poll_interval_ms ::= 1;
 
 	graphdata ::= graph.data # (g@s64);
-	i : u64 mut;
-	for(i = 0, i < (graphdata->timeline_count), i = i + 1)
-	{
-		cur_entry ::= deref(graphdata->timeline # i);
-		handle ::= cur_entry.handle;
-		if(cur_entry.is_graph)
-		{
-			if(impl_graph_is_real(handle@s64@gpu_graph))
-			{
-				as_graph ::= deref(graph.data # (handle@s64));
-				impl_host_wait_event(as_graph.event, poll_interval_ms);
-			}
-		}
-		else
-		{
-			if(impl_pass_is_real(handle@s64@gpu_pass))
-			{
-				as_pass ::= deref(pass.data # (handle@s64));
-				impl_host_wait_event(as_pass.event, poll_interval_ms);
-			}
-		}
-	}
-
-	// if this ends up bugged horribly, here's an evil cop-out:
-	// vk.device_wait_idle(hardware.used_device);
+	impl_host_wait_event(graphdata->event, poll_interval_ms);
 };
 
 graph_entry ::= struct
