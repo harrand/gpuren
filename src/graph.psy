@@ -171,10 +171,6 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 	{
 		cur_entry = deref((graphptr->timeline) # counter);
 		impl_wait_dependencies(graphptr, counter, short);
-		// todo: dependencies
-		// firstly get all the dependencies
-		// collaborate all their event u64s (both passes and subgraphs) in a single array
-		// then pass that array to vkCmdWaitEvents
 		if(cur_entry.is_graph)
 		{
 			ret = impl_record_subgraph_work((cur_entry.handle)@s64@gpu_graph, long, short);
@@ -191,9 +187,6 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 				return ret;
 			}
 		}
-		// todo: dependencies
-		// get our event and do a vkCmdSetEvent on it
-		// (note: if you deicde to support signalling events from the host the stage mask will also need VK_PIPELINE_STAGE_HOST_BIT though i doubt we will use this. host waiting instead of signalling is more likely which i have already implemented via impl_host_wait_event)
 		impl_notify_dependencies(graphptr, counter);
 	}
 
