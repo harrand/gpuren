@@ -10,6 +10,7 @@ impl_gpu_create_graph ::= func(name : u8?, a : arena mut? -> gpu_graph)
 {
 	ret ::= graph.count;
 	graphptr ::= impl_alloc_new_graph(a);
+	graphptr->pass_record = zero;
 	namelen ::= zstrlen(name);
 	graphptr->name = arena_alloc(a, namelen + 1);
 	memcopy(graphptr->name, name, namelen);
@@ -97,6 +98,7 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 {
 	ret : gpu_err mut := zero;
 	graphptr ::= graph.data # (g@s64);
+	impl_pass_gpu_clear_views(ref(graphptr->pass_record));
 	vk.reset_event(hardware.used_device, graphptr->event);
 	writes_to_system_image ::= impl_graph_writes_to_system_image(g);
 	will_present ::= impl_graph_will_present(g);
@@ -183,7 +185,7 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 		}
 		else
 		{
-			ret = impl_record_gpu_work((cur_entry.handle)@s64@gpu_pass, core.current_frame, long, short);
+			ret = impl_record_gpu_work((cur_entry.handle)@s64@gpu_pass, ref(graphptr->pass_record), core.current_frame, long, short);
 			if(ret.code != zero)
 			{
 				return ret;
@@ -328,6 +330,8 @@ graph_data_t ::= struct
 	dependencies : u64 mut? mut?;
 	dependency_counts : u64 mut?;
 	event : u64;
+
+	pass_record : pass_gpu_work_options;
 };
 
 // implementation details

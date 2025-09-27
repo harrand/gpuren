@@ -23,6 +23,50 @@ pass_data_t ::= struct
 	descriptor_sets : u64 mut[2];
 };
 
+pass_gpu_work_options ::= struct
+{
+	previously_cleared_views : u64 mut?;
+	previously_cleared_views_count : u64;
+	previously_cleared_views_cap : u64;
+};
+
+impl_pass_gpu_mark_view_cleared ::= func(image_view : u64, options : pass_gpu_work_options mut?, a : arena mut? -> v0)
+{
+	if(options->previously_cleared_views_cap == 0)
+	{
+		options->previously_cleared_views_cap = 8;
+		options->previously_cleared_views = arena_alloc(a, __sizeof(u64) * (options->previously_cleared_views_cap));
+	}
+	while((options->previously_cleared_views_count) >= (options->previously_cleared_views_cap))
+	{
+		oldcap ::= options->previously_cleared_views_cap;
+		olddata ::= options->previously_cleared_views;
+		options->previously_cleared_views_cap = (options->previously_cleared_views_cap * 2);
+		options->previously_cleared_views = arena_alloc(a, __sizeof(u64) * (options->previously_cleared_views_cap));
+		memcopy(options->previously_cleared_views, olddata, __sizeof(u64) * oldcap);
+	}
+	idx ::= options->previously_cleared_views_count;
+	options->previously_cleared_views_count = (options->previously_cleared_views_count + 1);
+	deref(options->previously_cleared_views # idx) = image_view;
+};
+
+impl_pass_gpu_clear_views ::= func(options : pass_gpu_work_options mut? -> v0)
+{
+	options->previously_cleared_views_count = 0;
+};
+
+impl_pass_gpu_has_view_been_cleared_before ::= func(image_view : u64, options : pass_gpu_work_options? -> bool)
+{
+	i : u64 mut;
+	for(i = 0, i < (options->previously_cleared_views_count), i = i + 1)
+	{
+		if(deref(options->previously_cleared_views # i) == image_view)
+		{
+			return true;
+		}
+	}
+	return false;
+};
 
 impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena mut? -> gpu_pass_result)
 {
@@ -215,7 +259,7 @@ impl_record_compute_work ::= func(passptr : pass_data_t mut?, frame_id : u64 -> 
 	return zero;
 };
 
-impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, long : arena mut?, short : arena mut? -> gpu_err)
+impl_record_graphics_work ::= func(passptr : pass_data_t mut?, options : pass_gpu_work_options mut?, frame_id : u64, long : arena mut?, short : arena mut? -> gpu_err)
 {
 	frame ::= deref(core.frames # frame_id);
 	pinfo ::= passptr->info;
@@ -280,6 +324,22 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 			render_target_view = (resptr->image_view);
 		}
 
+		// we have a colour output attachment
+		// we need to know if its been cleared already
+		// if not then we are the first and should do it (+ the transition)
+		// otherwise just load and assume there is no race condition
+		already_cleared ::= impl_pass_gpu_has_view_been_cleared_before(render_target_view, options);
+
+		rtv_load_op : s32 mut := 1; // VK_ATTACHMENT_LOAD_OP_CLEAR;
+		if(already_cleared)
+		{
+			rtv_load_op = 0; // VK_ATTACHMENT_LOAD_OP_LOAD
+		}
+		else
+		{
+			impl_pass_gpu_mark_view_cleared(render_target_view, options, long);
+		}
+
 		deref(colour_attachments # counter) = VkRenderingAttachmentInfo
 		{
 			.sType := 1000044001;
@@ -289,12 +349,11 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 			.resolveMode := 0;
 			.resolveImageView := 0;
 			.resolveImageLayout := 0;
-			//.loadOp := 0; // VK_ATTACHMENT_LOAD_OP_LOAD (if we're noit clearing colour targets)
-			.loadOp := 1; // VK_ATTACHMENT_LOAD_OP_CLEAR (if we are clearing colour targets)
+			.loadOp := rtv_load_op;
 			.storeOp := 0;
 			.clearValue := VkClearValue{.color := VkClearColorValue{.float32 := ginfo.clear_colour;};};
 		};
-		if(true) //todo: if we're not clearing colour targets
+		if(!already_cleared)
 		{
 			deref (colour_transitions # colour_transition_count) = VkImageMemoryBarrier
 			{
@@ -337,6 +396,18 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 			depth_target_view = (depthresptr->image_view);
 		}
 
+		depth_already_cleared ::= impl_pass_gpu_has_view_been_cleared_before(depth_target_view, options);
+
+		dtv_load_op : s32 mut := 1; // VK_ATTACHMENT_LOAD_OP_CLEAR;
+		if(depth_already_cleared)
+		{
+			dtv_load_op = 0; // VK_ATTACHMENT_LOAD_OP_LOAD
+		}
+		else
+		{
+			impl_pass_gpu_mark_view_cleared(depth_target_view, options, long);
+		}
+
 		depth_attachment_value = VkRenderingAttachmentInfo
 		{
 			.sType := 1000044001;
@@ -346,8 +417,7 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 			.resolveMode := 0;
 			.resolveImageView := 0;
 			.resolveImageLayout := 0;
-			//.loadOp := 0; // VK_ATTACHMENT_LOAD_OP_LOAD (if we're noit clearing colour targets)
-			.loadOp := 1; // VK_ATTACHMENT_LOAD_OP_CLEAR (if we are clearing colour targets)
+			.loadOp := dtv_load_op;
 			.storeOp := 0;
 			.clearValue := VkClearValue{.color := VkClearColorValue{.float32 := f32[4]{1.0; 0.0; 0.0; 0.0;};};};
 		};
@@ -359,7 +429,7 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 		// COLOUR_ATTACHMENT_OUTPUT
 		vk.cmd_pipeline_barrier(frame.cmds, 0x00002000, 0x00000400, 0, 0, zero, 0, zero, colour_transition_count@_, colour_transitions);
 	}
-	// todo: depth target stuffs.
+
 	render ::= VkRenderingInfo
 	{
 		.sType := 1000044000;
@@ -455,8 +525,7 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, frame_id : u64, l
 	return zero;
 };
 
-
-impl_record_gpu_work ::= func(p : gpu_pass, frame_id : u64, long : arena mut?, short : arena mut? -> gpu_err)
+impl_record_gpu_work ::= func(p : gpu_pass, options : pass_gpu_work_options mut?, frame_id : u64, long : arena mut?, short : arena mut? -> gpu_err)
 {
 	if(p == (gpu_pass.present))
 	{
@@ -473,7 +542,7 @@ impl_record_gpu_work ::= func(p : gpu_pass, frame_id : u64, long : arena mut?, s
 	}
 	else
 	{
-		ret = impl_record_graphics_work(passptr, frame_id, long, short);
+		ret = impl_record_graphics_work(passptr, options, frame_id, long, short);
 	}
 	impl_end_label(frame.cmds);
 	return ret;
