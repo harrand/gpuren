@@ -511,6 +511,7 @@ impl_create_empty_event ::= func(-> u64)
 	return evt;
 };
 
+// true if pass is an actual real pass created via gpu_create_pass, false if e.g present pass or invalid
 impl_pass_is_real ::= func(g : gpu_pass -> bool)
 {
 	return (g != (gpu_pass.invalid)) && ((g != (gpu_pass.present)));

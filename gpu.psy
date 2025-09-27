@@ -48,6 +48,11 @@ gpu_wait ::= func(g : gpu_graph -> v0)
 	impl_gpu_wait(g);
 };
 
+gpu_wait_all ::= func( -> v0)
+{
+	impl_gpu_wait_all();
+};
+
 gpu_hardware_count ::= func( -> u64)
 {
 	return impl_gpu_hardware_count();

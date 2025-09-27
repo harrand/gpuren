@@ -509,6 +509,7 @@ impl_notify_dependencies ::= func(g : graph_data_t mut?, idx : u64 -> v0)
 	vk.cmd_set_event(frame.cmds, event, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
 };
 
+// true if graph is an actual real graph created via gpu_create_graph, false if e.g present graph or invalid
 impl_graph_is_real ::= func(g : gpu_graph -> bool)
 {
 	return g != (gpu_graph.invalid);

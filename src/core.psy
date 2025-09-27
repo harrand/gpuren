@@ -873,3 +873,8 @@ impl_host_wait_event ::= func(event : u64, poll_interval_ms : u32 -> v0)
 		}
 	}
 };
+
+impl_gpu_wait_all ::= func( -> v0)
+{
+	vk.device_wait_idle(hardware.used_device);
+};
