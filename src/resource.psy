@@ -59,12 +59,21 @@ impl_gpu_resource_write ::= func(res : gpu_resource, data : v0? weak, data_size 
 	return impl_write_a_resource(resptr, data_size, offset);
 };
 
-impl_gpu_resource_read ::= func(res : gpu_resource, buf : v0? weak, len : u64, offset : u64 -> v0)
+impl_gpu_resource_read ::= func(res : gpu_resource, buf : v0? weak, len : u64, offset : u64 -> gpu_err)
 {
-	if(gpu_resource_size(res) <= (offset + len))
+	actual_len : u64 mut := len;
+	recorded_len ::= gpu_resource_size(res);
+	if(offset >= recorded_len)
 	{
-		putzstr("resource read out of range");
-		__debugbreak();
+		return gpu_err
+		{
+			.code := gpu_err_code.malformed;
+			.msg := "offset was >= the length of the resource";
+		};
+	}
+	if(recorded_len < actual_len)
+	{
+		actual_len = recorded_len;
 	}
 	resptr ::= resource.data # (res@s64);
 	rinfo ::= resptr->info;
@@ -72,13 +81,14 @@ impl_gpu_resource_read ::= func(res : gpu_resource, buf : v0? weak, len : u64, o
 	if(is_dynamic_buffer)
 	{
 		mapped_ptr ::= (resptr->mapped_ptr)@u8 mut?;
-		memcopy(buf, mapped_ptr # offset, len);
+		memcopy(buf, mapped_ptr # offset, actual_len);
 	}
 	else
 	{
 		ptr ::= (rinfo.data)@u8 mut?;
-		memcopy(buf, ptr # offset, len);
+		memcopy(buf, ptr # offset, actual_len);
 	}
+	return zero;
 };
 
 impl_gpu_resource_size ::= func(res : gpu_resource -> u64)

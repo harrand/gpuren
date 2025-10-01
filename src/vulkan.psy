@@ -1253,8 +1253,6 @@ load_vk_fn ::= func(funcname : u8?, instance : u64 -> u64 weak)
 	return addr;
 };
 
-donestr ::= "done.\n";
-
 vulkan_init ::= func( -> v0)
 {
 	initialised_driver : bool mut := false;
@@ -1265,11 +1263,9 @@ vulkan_init ::= func( -> v0)
 		{
 			__debugbreak();
 		}
-		putzstr("loading from vulkan driver...");
 		vulkan_driver_initialised = true;
 		initialised_driver = true;
 	}
-	defer putzstr(donestr);
 
 	vk.create_instance = load_vk_driver_fn("vkCreateInstance", vulkan_driver);
 	vk.destroy_instance = load_vk_driver_fn("vkDestroyInstance", vulkan_driver);

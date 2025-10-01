@@ -110,7 +110,11 @@ impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : a
 	impl_bind_buffer_mem(passptr->metabuf, size, true, ref buffer_alloc_result);
 	if(buffer_alloc_result.code != zero)
 	{
-		// todo: propagate buffer_alloc_result
+		return gpu_pass_result
+		{
+			.res := zero;
+			.err := buffer_alloc_result;
+		};
 	}
 
 	metabuf_prefix ::= "Metabuffer: ";

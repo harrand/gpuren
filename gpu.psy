@@ -94,11 +94,18 @@ gpu_hardware_count ::= func( -> u64)
 	return impl_gpu_hardware_count();
 };
 
+// fill an array with information about all hardware on the machine
+// [min(array_size, gpu_hardware_count()) array elements will be filled, in no particular order]
+// gpu_err.cpuoom => not enough cpu memory
+// gpu_err.gpuoom => not enough gpu memory
+// gpu_err.unknown => internal error, upto you to figure out
 gpu_query_hardware ::= func(array : gpu_hardware mut?, array_size : u64, a : arena mut? -> gpu_err)
 {
 	return impl_gpu_query_hardware(array, array_size, a);
 };
 
+// generate a score for a piece of hardware. higher score means a device generally better-suited for 3d graphics + compute
+// you are encouraged to write your own, this is just for starters
 gpu_default_hardware_score ::= func(hw : gpu_hardware -> s64)
 {
 	type_tbl ::= s64[4]{100; 20; 10; 0;};
@@ -109,16 +116,12 @@ gpu_default_hardware_score ::= func(hw : gpu_hardware -> s64)
 	score = (score + deref(caps_tbl # (hw.caps@s64)));
 	// 1 score per GiB of vram
 	score = (score + ((hw.vram_size_mib / 1024)@s64));
-	putzstr("rating of ");
-	putchar('"');
-	putzstr(hw.name);
-	putchar('"');
-	putzstr(" = ");
-	putuint(score);
-	putchar(10);
 	return score;
 };
 
+// given an array of enumerated hardwares on the machine, return the index of the hardware that scores highest according to the given scoring function
+// - array size must be > 0
+// [you likely want to write your own scoring function, but gpu_default_hardware_score for you to have a look at]
 gpu_hardware_select ::= func(hardware_options : gpu_hardware?, hardware_options_len : u64, score_fn : func(hw : gpu_hardware -> s64) -> u64)
 {
 	i : u64 mut;
@@ -147,42 +150,66 @@ gpu_use_hardware ::= func(hw : gpu_hardware, wsi : gpu_wsi -> gpu_err)
 	return impl_gpu_use_hardware(hw, wsi);
 };
 
+// create either a graphics or compute pass
+// long <= arena whose lifetime should go until gpu_term
+// short <= arena whose lifetime can end immediately
+// gpu_err.cpuoom => not enough gpu memory
+// gpu_err.gpuoom => not enough gpu memory
+// gpu_err.malformed => {
+//	the pass uses gpu_resource.window_resource but you never provided a valid gpu_wsi in gpu_use_hardware
+// }
 gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena mut? -> gpu_pass_result)
 {
 	return impl_gpu_create_pass(info, long, short);
 };
 
-// create a gpu buffer for use in one or more passes
+// create a buffer resource
 gpu_create_buffer ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource_result)
 {
 	return impl_gpu_create_buffer(info, a);
 };
 
+// create an image resource
 gpu_create_image ::= func(info : gpu_resource_info, a : arena mut? -> gpu_resource_result)
 {
 	return impl_gpu_create_image(info, a);
 };
 
+// transfer new data to an existing resource.
+// - data_size must be <= the size of the resource data
+// [if its a buffer resource with flag .dynamic, this will be really fast, otherwise you should assume it will gpu_wait_all]
 gpu_resource_write ::= func(res : gpu_resource, data : v0? weak, data_size : u64, offset : u64 -> v0)
 {
 	impl_gpu_resource_write(res, data, data_size, offset);
 };
 
-gpu_resource_read ::= func(res : gpu_resource, buf : v0? weak, len : u64, offset : u64 -> v0)
+// read the data from an existing resource into the buffer.
+// [if the resource is a dynamic buffer, this is guaranteed to be "relatively recent"]
+// [if the resource is written to by the gpu, the data *may* be out of date and there's currently no way to deal with that]
+// [you are expected to use gpu_resource_size(...) and your offset to figure out how many bytes read - note this will read less than your array size if it would otherwise go out of bounds]
+// gpu_err.malformed => {
+//	the offset provided was greater than the length of the resource itself i.e the read would go out of bounds
+// }
+gpu_resource_read ::= func(res : gpu_resource, buf : v0? weak, len : u64, offset : u64 -> gpu_err)
 {
-	impl_gpu_resource_read(res, buf, len, offset);
+	return impl_gpu_resource_read(res, buf, len, offset);
 };
 
+// get the data size of a resource, in bytes
 gpu_resource_size ::= func(res : gpu_resource -> u64)
 {
 	return impl_gpu_resource_size(res);
 };
 
+// get a cpu-read/write pointer to a mapping of a dynamic buffer resource
+// - res must be a buffer with the .dynamic flag
 gpu_resource_pointer ::= func(res : gpu_resource -> gpu_resource_pointer_result)
 {
 	return impl_gpu_resource_pointer(res);
 };
 
+// create an arena wrapped around the mapping of a dynamic buffer resource
+// - res must be a buffer with the .dynamic flag
 gpu_map_resource ::= func(res : gpu_resource -> gpu_map_resource_result)
 {
 	return impl_gpu_map_resource(res);
@@ -231,6 +258,7 @@ gpu_create_compute_shader ::= func(compute_source : u8?, compute_source_len : u6
 	return impl_gpu_create_compute_shader(compute_source, compute_source_len, a);
 };
 
+// basic information about your application. it is perfectly valid to pass zero if you cba
 gpu_appinfo ::= struct
 {
 	name : u8?;
@@ -238,6 +266,7 @@ gpu_appinfo ::= struct
 	ver_min : u32;
 };
 
+// represents an error code and a message describing the error. if .code == zero then there is no error
 gpu_err ::= struct
 {
 	code : gpu_err_code;

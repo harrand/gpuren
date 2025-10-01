@@ -104,8 +104,6 @@ impl_gpu_init ::= func(info : gpu_appinfo -> gpu_err)
 	else
 	{
 		layer_count ::= 1;
-		putzstr("validation layers enabled");
-		putchar(10);
 	}
 
 	create ::= VkInstanceCreateInfo

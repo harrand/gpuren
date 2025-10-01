@@ -91,9 +91,6 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> gpu_err)
 			}
 		}
 
-		putzstr("(re)creating swapchain...");
-		putchar(10);
-
 		caps : VkSurfaceCapabilitiesKHR mut;
 		vk.get_physical_device_surface_capabilities_khr(hardware.used_hardware, swapchain.surface, ref caps);
 
