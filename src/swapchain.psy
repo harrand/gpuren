@@ -19,100 +19,15 @@ swapchain_state ::= struct
 	system_depth_image_view : u64;
 };
 
-impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
+impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> gpu_err)
 {
-	wnd ::= core.wsi.window;
-	if(swapchain.surface == 0)
-	{
-		// create surface.
-		static if(_win32)
-		{
-			create ::= VkWin32SurfaceCreateInfoKHR
-			{
-				.sType := 1000009000;
-				.pNext := zero;
-				.flags := 0;
-				.hinstance := GetModuleHandleA(zero);
-				.hwnd := wnd.get_native(wnd.handle);
-			};
-			vk_check(vk.create_win32_surface_khr(core.vkinst, ref create, zero, ref(swapchain.surface)));
-		}
-		static if(_linux)
-		{
-			__error("linux vulkan support NYI");
-		}
-	}
-
-	if(swapchain.width@_ == w)
-	{
-		if(swapchain.height@_ == h)
-		{
-			return false;
-		}
-	}
-
-	putzstr("(re)creating swapchain...");
-	putchar(10);
-
-	caps : VkSurfaceCapabilitiesKHR mut;
-	vk.get_physical_device_surface_capabilities_khr(hardware.used_hardware, swapchain.surface, ref caps);
-
-	swch_create ::= VkSwapchainCreateInfoKHR
-	{
-		.sType := 1000001000;
-		.pNext := zero;
-		.flags := 0;
-		.surface := swapchain.surface;
-		.minImageCount := 2;
-		.imageFormat := swapchain_format;
-		.imageColorSpace := 0;
-		.imageExtent := VkExtent2D{.width := w@_; .height := h@_;};
-		.imageArrayLayers := 1;
-		.imageUsage := (0x00000010 | 0x00000002);
-		.imageSharingMode := 0;
-		.queueFamilyIndexCount := 1;
-		.pQueueFamilyIndices := ref(hardware.used_qfi);
-		.preTransform := caps.currentTransform;
-		.compositeAlpha := 0x00000001;
-		// 0 = immediate. fifo (vsync) = 2
-		.presentMode := 2;
-		.clipped := 0;
-		.oldSwapchain := swapchain.handle;
-	};
-	old_swapchain ::= swapchain.handle;
-	vk_check(vk.create_swapchain_khr(hardware.used_device, ref swch_create, zero, ref(swapchain.handle)));
-
-	// todo: destroy old swapchain images if they already existed. right now we arent checking that and are just stomping over swapchain_images and swapchain_views.
-	vk.get_swapchain_images_khr(hardware.used_device, swapchain.handle, ref(swapchain.image_count), zero);
-	if(swapchain.images_cap != (swapchain.image_count@_))
-	{
-		swapchain.images = arena_alloc(a, __sizeof(u64) * (swapchain.image_count));
-		swapchain.images_cap = (swapchain.image_count@_);
-	}
-	if(swapchain.views_cap != (swapchain.image_count@_))
-	{
-		swapchain.views = arena_alloc(a, __sizeof(u64) * swapchain.image_count);
-		swapchain.views_cap = (swapchain.image_count@_);
-	}
-	vk.get_swapchain_images_khr(hardware.used_device, swapchain.handle, ref(swapchain.image_count), swapchain.images);
-
-	counter : u32 mut;
-	if(old_swapchain != 0)
-	{
-		// we already had a swapchain. we should delete the old images.
-		for(counter = 0, counter < (swapchain.image_count), counter = counter + 1)
-		{
-			vk.destroy_image_view(hardware.used_device, deref(swapchain.views # counter), zero);
-		}
-		vk.destroy_swapchain_khr(hardware.used_device, old_swapchain, zero);
-	}
-
+	// creating this now because i need this even if headless
 	view_create : VkImageViewCreateInfo mut := VkImageViewCreateInfo
 	{
-.sType := 15;
+		.sType := 15;
 		.pNext := zero;
 		.flags := 0;
-		.image := 0; // note: will overwrite this in coming for-loop.
+		.image := 0; // note: will overwrite this later
 		.viewType := 1;
 		.format := swapchain_format;
 		.components := VkComponentMapping
@@ -132,12 +47,114 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
 		};
 	};
 
-	for(counter = 0, counter < (swapchain.image_count), counter = counter + 1)
+	if(swapchain.width@_ == w)
 	{
-		(view_create.image) = deref(swapchain.images # counter);
-
-		vk_check(vk.create_image_view(hardware.used_device, ref view_create, zero, swapchain.views # counter));
+		if(swapchain.height@_ == h)
+		{
+			return zero;
+		}
 	}
+
+	if(core.wsi.type == (gpu_wsi_type.headless))
+	{
+		// we are headless
+	}
+	else
+	{
+		if(core.wsi.type == (gpu_wsi_type.invalid))
+		{
+			// we should've caught this and returned an error code in impl_require_swapchain so this is an internal bug to get to this point
+			// crash
+			putzstr("fatal error: wsi type was invalid even though we should've checked for it and returned an err code gracefully easlier. its too late now, please submit a bug report");
+			__debugbreak();
+		}
+		wnd ::= core.wsi.window;
+		// we have an actual window.
+		if(swapchain.surface == 0)
+		{
+			// create surface.
+			static if(_win32)
+			{
+				create ::= VkWin32SurfaceCreateInfoKHR
+				{
+					.sType := 1000009000;
+					.pNext := zero;
+					.flags := 0;
+					.hinstance := GetModuleHandleA(zero);
+					.hwnd := wnd.get_native(wnd.handle);
+				};
+				vk_check(vk.create_win32_surface_khr(core.vkinst, ref create, zero, ref(swapchain.surface)));
+			}
+			static if(_linux)
+			{
+				__error("linux vulkan support NYI");
+			}
+		}
+
+		putzstr("(re)creating swapchain...");
+		putchar(10);
+
+		caps : VkSurfaceCapabilitiesKHR mut;
+		vk.get_physical_device_surface_capabilities_khr(hardware.used_hardware, swapchain.surface, ref caps);
+
+		swch_create ::= VkSwapchainCreateInfoKHR
+		{
+			.sType := 1000001000;
+			.pNext := zero;
+			.flags := 0;
+			.surface := swapchain.surface;
+			.minImageCount := 2;
+			.imageFormat := swapchain_format;
+			.imageColorSpace := 0;
+			.imageExtent := VkExtent2D{.width := w@_; .height := h@_;};
+			.imageArrayLayers := 1;
+			.imageUsage := (0x00000010 | 0x00000002);
+			.imageSharingMode := 0;
+			.queueFamilyIndexCount := 1;
+			.pQueueFamilyIndices := ref(hardware.used_qfi);
+			.preTransform := caps.currentTransform;
+			.compositeAlpha := 0x00000001;
+			// 0 = immediate. fifo (vsync) = 2
+			.presentMode := 2;
+			.clipped := 0;
+			.oldSwapchain := swapchain.handle;
+		};
+		old_swapchain ::= swapchain.handle;
+		vk_check(vk.create_swapchain_khr(hardware.used_device, ref swch_create, zero, ref(swapchain.handle)));
+
+		// todo: destroy old swapchain images if they already existed. right now we arent checking that and are just stomping over swapchain_images and swapchain_views.
+		vk.get_swapchain_images_khr(hardware.used_device, swapchain.handle, ref(swapchain.image_count), zero);
+		if(swapchain.images_cap != (swapchain.image_count@_))
+		{
+			swapchain.images = arena_alloc(a, __sizeof(u64) * (swapchain.image_count));
+			swapchain.images_cap = (swapchain.image_count@_);
+		}
+		if(swapchain.views_cap != (swapchain.image_count@_))
+		{
+			swapchain.views = arena_alloc(a, __sizeof(u64) * swapchain.image_count);
+			swapchain.views_cap = (swapchain.image_count@_);
+		}
+		vk.get_swapchain_images_khr(hardware.used_device, swapchain.handle, ref(swapchain.image_count), swapchain.images);
+
+		counter : u32 mut;
+		if(old_swapchain != 0)
+		{
+			// we already had a swapchain. we should delete the old images.
+			for(counter = 0, counter < (swapchain.image_count), counter = counter + 1)
+			{
+				vk.destroy_image_view(hardware.used_device, deref(swapchain.views # counter), zero);
+			}
+			vk.destroy_swapchain_khr(hardware.used_device, old_swapchain, zero);
+		}
+
+		for(counter = 0, counter < (swapchain.image_count), counter = counter + 1)
+		{
+			(view_create.image) = deref(swapchain.images # counter);
+
+			vk_check(vk.create_image_view(hardware.used_device, ref view_create, zero, swapchain.views # counter));
+		}
+	}
+	// do this part for both headless and window
 
 	if(swapchain.system_image != 0)
 	{
@@ -217,15 +234,18 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
 
 	swapchain.width = w;
 	swapchain.height = h;
-	return true;
+	return zero;
 };
 
-impl_require_swapchain ::= func(a : arena mut? -> bool)
+impl_require_swapchain ::= func(a : arena mut? -> gpu_err)
 {
 	if(core.wsi.type == (gpu_wsi_type.invalid))
 	{
-		putzstr("one or more GPU passes need access to the swapchain, but no valid window was ever provided via gpu_use_hardware.");
-		__debugbreak();
+		return gpu_err
+		{
+			.code := gpu_err_code.malformed;
+			.msg := "one or more GPU passes use gpu_resource.window_resource but gpu_wsi is of gpu_wsi_type.invalid";
+		};
 	}
 
 	windims : u32[2] mut := zero;

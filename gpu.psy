@@ -99,6 +99,43 @@ gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, a : a
 	return impl_gpu_iterate_hardware(array, array_size, a);
 };
 
+gpu_default_hardware_score ::= func(hw : gpu_hardware -> s64)
+{
+	type_tbl ::= s64[4]{100; 20; 10; 0;};
+	caps_tbl ::= s64[4]{10; -100; -100; 0;};
+
+	score : s64 mut := 0;
+	score = (score + deref(type_tbl # (hw.type@s64)));
+	score = (score + deref(caps_tbl # (hw.caps@s64)));
+	// 1 score per GiB of vram
+	score = (score + ((hw.vram_size_mib / 1024)@s64));
+	putzstr("rating of ");
+	putchar('"');
+	putzstr(hw.name);
+	putchar('"');
+	putzstr(" = ");
+	putuint(score);
+	putchar(10);
+	return score;
+};
+
+gpu_hardware_select ::= func(hardware_options : gpu_hardware?, hardware_options_len : u64, score_fn : func(hw : gpu_hardware -> s64) -> u64)
+{
+	i : u64 mut;
+	select_idx : u64 mut := 0;
+	max_score : s64 mut := 0;
+	for(i = 0, i < hardware_options_len, i = i + 1)
+	{
+		score ::= score_fn(deref(hardware_options # i));
+		if(score > max_score)
+		{
+			select_idx = i;
+			max_score = score;
+		}
+	}
+	return select_idx;
+};
+
 // use one of the hardwares you retrieved via gpu_iterate_hardware
 // gpu_err.fatal => you used this hardware earlier and did something so evil that the hardware itself is invalidated
 // gpu_err.reqfailed => the hardware does not meet the requirements to be used

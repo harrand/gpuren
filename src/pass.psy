@@ -160,7 +160,15 @@ impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : a
 			cur_colour_target = deref((ginfo.colour_targets_data) # counter);
 			if(cur_colour_target == (gpu_resource.window_resource))
 			{
-				impl_require_swapchain(long);
+				swapchain_err ::= impl_require_swapchain(long);
+				if(swapchain_err.code != zero)
+				{
+					return gpu_pass_result
+					{
+						.res := zero;
+						.err := swapchain_err;
+					};
+				}
 				passptr->targets_swapchain = true;
 			}
 		}
@@ -289,7 +297,11 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, options : pass_gp
 
 	if(passptr->targets_swapchain)
 	{
-		impl_require_swapchain(long);
+		swapchain_err ::= impl_require_swapchain(long);
+		if(swapchain_err.code != zero)
+		{
+			return swapchain_err;
+		}
 
 		dims ::= passptr->colour_target_dimensions;
 		if(deref(dims # 0) != (swapchain.width@_))

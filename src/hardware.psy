@@ -64,11 +64,6 @@ impl_gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, 
 
 impl_gpu_use_hardware ::= func(hw : gpu_hardware, wsi : gpu_wsi -> gpu_err)
 {
-	if(wsi.type == (gpu_wsi_type.headless))
-	{
-		putzstr("debug error: the headless window resource is not yet implemented");
-		__debugbreak();
-	}
 	core.wsi = wsi;
 	pdev ::= hw.native_handle;
 	queue_priority : f32 := 1.0;
@@ -506,7 +501,7 @@ impl_fill_hardware_info ::= func(hw : gpu_hardware mut?, pdev : u64, a : arena m
 	for(counter = 0, counter < (memprops.memoryHeapCount), counter = counter + 1)
 	{
 		cur_vk_heap = deref(memprops.memoryHeaps # counter);
-		(hw->vram_size_mib) = (hw->vram_size_mib) + (cur_vk_heap.size);
+		(hw->vram_size_mib) = (hw->vram_size_mib) + (cur_vk_heap.size / (1024 * 1024));
 	}
 
 	family_count : u32 mut := 0;

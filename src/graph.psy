@@ -110,7 +110,11 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 	if(will_present)
 	{
 		// make sure swapchain is available.
-		impl_require_swapchain(long);
+		swapchain_err ::= impl_require_swapchain(long);
+		if(swapchain_err.code != zero)
+		{
+			return swapchain_err;
+		}
 		if(swapchain.width == 0)
 		{
 			return zero;
@@ -190,11 +194,11 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 		impl_notify_dependencies(graphptr, counter);
 	}
 
-	// if one of these passes outputted to the system image:
+	// if one of these passes outputted to the system image (which we want to present):
 	// 	1. system image must be in color attachment layout. to eventually present later on, we should now transition to transfer_src (to transfer it to swapchain image).
 	// 	2. record a command to do the blit (swapchain image should be transfer_dst)
 	// 	3. transition the swapchain image to present_src.
-	if(writes_to_system_image)
+	if(will_present)
 	{
 		impl_begin_label(frame.cmds, "Blit System Image -> Swapchain Image");
 		defer impl_end_label(frame.cmds);
@@ -261,6 +265,13 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 
 	vk_check(vk.end_command_buffer(frame.cmds));
 	wait_stage : s32 := 0;
+
+	signal_semaphore_count : u32 mut := 1;
+	// if we're not presenting then we dont need a signal semaphore
+	if(!will_present)
+	{
+		signal_semaphore_count = 0;
+	}
 	submit ::= VkSubmitInfo
 	{
 		.sType := 4;
@@ -270,7 +281,7 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 		.pWaitDstStageMask := ref wait_stage;
 		.commandBufferCount := 1;
 		.pCommandBuffers := ref (frame.cmds);
-		.signalSemaphoreCount := 1;
+		.signalSemaphoreCount := signal_semaphore_count;
 		.pSignalSemaphores := ref (frame.swapchain_sem);
 	};
 	vk_check(vk.queue_submit(hardware.graphics_queue, 1, ref submit, frame.swapchain_fence));
@@ -331,6 +342,12 @@ graph_data_t ::= struct
 
 impl_graph_will_present ::= func(g : gpu_graph -> bool)
 {
+	if(core.wsi.type == (gpu_wsi_type.headless))
+	{
+		// for a headless build, if we have a present pass we just ignore it
+		return false;
+	}
+
 	graphptr ::= graph.data # (g@s64);
 	count ::= graphptr->timeline_count;
 
