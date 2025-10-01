@@ -94,9 +94,9 @@ gpu_hardware_count ::= func( -> u64)
 	return impl_gpu_hardware_count();
 };
 
-gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, a : arena mut? -> gpu_err)
+gpu_query_hardware ::= func(array : gpu_hardware mut?, array_size : u64, a : arena mut? -> gpu_err)
 {
-	return impl_gpu_iterate_hardware(array, array_size, a);
+	return impl_gpu_query_hardware(array, array_size, a);
 };
 
 gpu_default_hardware_score ::= func(hw : gpu_hardware -> s64)

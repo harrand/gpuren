@@ -20,7 +20,7 @@ impl_gpu_hardware_count ::= func( -> u64)
 	return ret@_;
 };
 
-impl_gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, a : arena mut? -> gpu_err)
+impl_gpu_query_hardware ::= func(array : gpu_hardware mut?, array_size : u64, a : arena mut? -> gpu_err)
 {
 	// need an array of VkPhysicalDevices for vulkan to write into.
 	pdev_storage : u64 mut? := arena_alloc(a, __sizeof(u64) * array_size);
