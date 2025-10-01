@@ -3,6 +3,21 @@
 	add_source_directory("src");
 }
 
+gpu_wsi_type ::= enum
+{
+	.invalid := 0;
+	.window := 1;
+	.headless := 2;
+};
+
+gpu_wsi ::= struct
+{
+	handle : u64;
+	type : gpu_wsi_type;
+	get_native : func(handle : u64 -> u64);
+	get_dimensions : func(handle : u64 -> u32[2]);
+};
+
 // initialise psygpu. you must call this before doing anything else. gpu_term() will undo this.
 // gpu_err.malformed => you have already called gpu_init without prior termination
 // gpu_err.reqfailed => your graphics setup/drivers do not meet the requirements to be used
@@ -69,9 +84,9 @@ gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, a : a
 // gpu_err.cpuoom => not enough cpu memory
 // gpu_err.gpuoom => not enough gpu memory
 // gpu_err.unknown => internal error, upto you to figure out
-gpu_use_hardware ::= func(hw : gpu_hardware, window : window -> gpu_err)
+gpu_use_hardware ::= func(hw : gpu_hardware, wsi : gpu_wsi -> gpu_err)
 {
-	return impl_gpu_use_hardware(hw, window);
+	return impl_gpu_use_hardware(hw, wsi);
 };
 
 gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena mut? -> gpu_pass_result)

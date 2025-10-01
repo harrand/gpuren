@@ -190,7 +190,7 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 		impl_notify_dependencies(graphptr, counter);
 	}
 
-	// if we just wrote to the system image:
+	// if one of these passes outputted to the system image:
 	// 	1. system image must be in color attachment layout. to eventually present later on, we should now transition to transfer_src (to transfer it to swapchain image).
 	// 	2. record a command to do the blit (swapchain image should be transfer_dst)
 	// 	3. transition the swapchain image to present_src.

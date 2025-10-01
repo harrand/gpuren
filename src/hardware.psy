@@ -62,9 +62,9 @@ impl_gpu_iterate_hardware ::= func(array : gpu_hardware mut?, array_size : u64, 
 	return zero;
 };
 
-impl_gpu_use_hardware ::= func(hw : gpu_hardware, window : window -> gpu_err)
+impl_gpu_use_hardware ::= func(hw : gpu_hardware, wsi : gpu_wsi -> gpu_err)
 {
-	core.target_window = window;
+	core.wsi = wsi;
 	pdev ::= hw.native_handle;
 	queue_priority : f32 := 1.0;
 

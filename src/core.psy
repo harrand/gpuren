@@ -4,7 +4,7 @@ core_state ::= struct
 {
 	vkinst : u64 mut;
 	current_frame : u64 mut;
-	target_window : window mut;
+	wsi : gpu_wsi mut;
 	frames : frame_data mut[2] mut;
 	scratch : scratch_data mut;
 	vallocator : vallocator_t mut;
@@ -67,7 +67,7 @@ impl_gpu_init ::= func(info : gpu_appinfo -> gpu_err)
 	}
 	GPU_VERSION ::= VK_MAKE_API_VERSION(0, 0, 1, 0);
 	vulkan_init();
-	core.target_window = window.invalid;
+	core.wsi = zero;
 
 	appinfo ::= VkApplicationInfo
 	{
