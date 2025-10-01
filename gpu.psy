@@ -5,17 +5,38 @@
 
 gpu_wsi_type ::= enum
 {
+	// invalid - default value. psygpu will emit an error if a pass attempts to use gpu_resource.window_resource
 	.invalid := 0;
+	// gpu_resource.window_resource refers to a genuine existing window
 	.window := 1;
+	// gpu_resource.window_resource refers to an internal, offscreen image
 	.headless := 2;
 };
 
+// describes the nature of gpu_resource.window_resource
 gpu_wsi ::= struct
 {
-	handle : u64;
+	// type of window system integration (see gpu_wsi_type for info). if != .window, all other data members are ignored.
 	type : gpu_wsi_type;
+	// data if .type == .window
+	window : gpu_wsi_window;
+	// data if .type == .headless
+	headless : gpu_wsi_headless;
+};
+
+gpu_wsi_window ::= struct
+{
+	// arbitrary handle that you associate with a specific window suitable for use as a gpu-accelerated render target
+	handle : u64;
+	// function that converts the arbitrary handle to the underlying native window handle of your operating system
 	get_native : func(handle : u64 -> u64);
+	// function that retrieves the dimensions (width and height, in pixels) of the *renderable* window region, e.g excluding title bar height
 	get_dimensions : func(handle : u64 -> u32[2]);
+};
+
+gpu_wsi_headless ::= struct
+{
+	dimensions : u32[2];
 };
 
 // initialise psygpu. you must call this before doing anything else. gpu_term() will undo this.

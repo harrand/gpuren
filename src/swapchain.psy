@@ -21,6 +21,7 @@ swapchain_state ::= struct
 
 impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
 {
+	wnd ::= core.wsi.window;
 	if(swapchain.surface == 0)
 	{
 		// create surface.
@@ -32,7 +33,7 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> bool)
 				.pNext := zero;
 				.flags := 0;
 				.hinstance := GetModuleHandleA(zero);
-				.hwnd := core.wsi.get_native(core.wsi.handle);
+				.hwnd := wnd.get_native(wnd.handle);
 			};
 			vk_check(vk.create_win32_surface_khr(core.vkinst, ref create, zero, ref(swapchain.surface)));
 		}
@@ -227,7 +228,17 @@ impl_require_swapchain ::= func(a : arena mut? -> bool)
 		__debugbreak();
 	}
 
-	windims ::= core.wsi.get_dimensions(core.wsi.handle);
+	windims : u32[2] mut := zero;
+	if(core.wsi.type == (gpu_wsi_type.headless))
+	{
+		windims = (core.wsi.headless.dimensions);
+	}
+	else
+	{
+		wnd ::= core.wsi.window;
+		windims = (wnd.get_dimensions(wnd.handle));
+	}
+
 	x ::= deref(windims # 0);
 	y ::= deref(windims # 1);
 	if(x == 0)
