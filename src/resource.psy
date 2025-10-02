@@ -176,7 +176,8 @@ impl_gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena
 	{
 		if(impl_pass_uses_resource(counter@s64@gpu_pass, res))
 		{
-			impl_write_resources(pass.data # counter, long, short);
+			write_err ::= impl_write_resources(pass.data # counter, long, short);
+			// todo: pass this error upwards
 		}
 	}
 };
@@ -214,7 +215,8 @@ impl_gpu_resize_image ::= func(res : gpu_resource, new_dimensions : u32[2], long
 	{
 		if(impl_pass_uses_resource(counter@s64@gpu_pass, res))
 		{
-			impl_write_resources(pass.data # counter, long, short);
+			write_err ::= impl_write_resources(pass.data # counter, long, short);
+			// todo: pass this error upwards
 			impl_populate_descriptors(pass.data # counter, long, short);
 		}
 	}
@@ -320,16 +322,18 @@ impl_write_a_resource ::= func(resptr : resource_data_t?, size : u64, offset : u
 	return impl_cpu_gpu_transfer(resptr->vk_handle, resptr->is_buffer, rinfo.data, size, rinfo.image_dimensions, offset);
 };
 
-impl_write_resources ::= func(passptr : pass_data_t mut?, long : arena mut?, short : arena mut? -> v0)
+impl_write_resources ::= func(passptr : pass_data_t mut?, long : arena mut?, short : arena mut? -> gpu_err)
 {
 	pinfo ::= passptr->info;
 	if((pinfo.resources_count) == 0)
 	{
-		return;
+		return zero;
 	}
 
 	buffer_addresses : u64 mut? := arena_alloc(short, passptr->metabuf_size);
 	bufcount : u64 mut := 0;
+
+	write_err : gpu_err mut := zero;
 
 	i : u64 mut := 0;
 	curres : gpu_resource mut;
@@ -349,9 +353,12 @@ impl_write_resources ::= func(passptr : pass_data_t mut?, long : arena mut?, sho
 				}
 				else
 				{
-					// todo: resource write image data to resdata.vk_handle.
 					resinfo ::= resdata.info;
-					impl_cpu_gpu_transfer(resdata.vk_handle, false, resdata.info.data, resdata.info.data_size, resdata.info.image_dimensions, 0);
+					write_err = impl_cpu_gpu_transfer(resdata.vk_handle, false, resdata.info.data, resdata.info.data_size, resdata.info.image_dimensions, 0);
+					if(write_err.code != zero)
+					{
+						return write_err;
+					}
 				}
 			}
 		}
@@ -359,15 +366,23 @@ impl_write_resources ::= func(passptr : pass_data_t mut?, long : arena mut?, sho
 
 	if(bufcount != ((passptr->metabuf_size) / __sizeof(u64)))
 	{
-		putzstr("internal metabuf logic error");
-		__debugbreak();
+		return gpu_err
+		{
+			.code := gpu_err_code.unknown;
+			.msg := "internal pass metabuffer was of incorrect size. please report this as a bug";
+		};
 	}
 
 	// write to metabuffer.
 	if(bufcount > 0)
 	{
-		impl_cpu_gpu_transfer(passptr->metabuf, true, buffer_addresses, passptr->metabuf_size, zero, 0);
+		write_err = impl_cpu_gpu_transfer(passptr->metabuf, true, buffer_addresses, passptr->metabuf_size, zero, 0);
+		if(write_err.code != zero)
+		{
+			return write_err;
+		}
 	}
+	return zero;
 };
 
 impl_init_buffer ::= func(resptr : resource_data_t mut?, info : gpu_resource_info, a : arena mut? -> gpu_err)

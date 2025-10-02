@@ -147,14 +147,15 @@ impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : a
 			dbflags ::= dbinfo.buffer_flags;
 			if((dbflags & (gpu_buffer_flag.draw_buffer)) == zero)
 			{
-				putzstr("error: draw_buffer (");
-				putuint(drawbuf_handle);
-				putzstr(") passed to graphics renderer ");
-				putchar('"');
-				putzstr(info.name);
-				putchar('"');
-				putzstr(" did not have gpu_buffer_flag.draw_buffer.");
-				__debugbreak();
+				return gpu_pass_result
+				{
+					.res := gpu_pass.invalid;
+					.err := gpu_err
+					{
+						.code := gpu_err_code.malformed;
+						.msg := "error: draw buffer of graphics renderer did not have gpu_buffer_flag.draw_buffer";
+					};
+				};
 			}
 		}
 
@@ -169,7 +170,7 @@ impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : a
 				{
 					return gpu_pass_result
 					{
-						.res := zero;
+						.res := gpu_pass.invalid;
 						.err := swapchain_err;
 					};
 				}
@@ -182,8 +183,24 @@ impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : a
 
 	passptr->event = impl_create_empty_event();
 
-	impl_write_resources(passptr, long, short);
-	impl_populate_descriptors(passptr, long, short);
+	write_err ::= impl_write_resources(passptr, long, short);
+	if(write_err.code != zero)
+	{
+		return gpu_pass_result
+		{
+			.res := gpu_pass.invalid;
+			.err := descriptor_err;
+		};
+	}
+	descriptor_err ::= impl_populate_descriptors(passptr, long, short);
+	if(descriptor_err.code != zero)
+	{
+		return gpu_pass_result
+		{
+			.res := gpu_pass.invalid;
+			.err := descriptor_err;
+		};
+	}
 
 	return gpu_pass_result
 	{
