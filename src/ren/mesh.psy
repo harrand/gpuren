@@ -62,9 +62,11 @@ create_mesh_storage ::= func(info : mesh_vertex_info, initial_vertex_capacity : 
 	{
 		.vertex_info := info;
 		.vertex_buffer := vb.res;
+		.vertex_cursor := 0;
 		.index_buffer := ib.res;
+		.index_cursor := 0;
 		.meshes := arena_alloc(global_arena, __sizeof(mesh_locator) * initial_mesh_capacity);
-		.meshes_count := zero;
+		.meshes_count := 0;
 		.meshes_cap := initial_mesh_capacity;
 	};
 };

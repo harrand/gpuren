@@ -1,0 +1,4 @@
+== default ==
+{
+	add_source_directory("src/ren");
+}

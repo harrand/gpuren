@@ -215,7 +215,7 @@ gpu_map_resource ::= func(res : gpu_resource -> gpu_map_resource_result)
 	return impl_gpu_map_resource(res);
 };
 
-// resizes a buffer. attempts to preserve old data
+// resizes a buffer to make it smaller or larger. attempts to preserve old data
 // res => resource to resize. must be a buffer
 // new_size => new size of the resource, in bytes
 // long => arena which must outlive the buffer's lifetime
@@ -224,6 +224,15 @@ gpu_map_resource ::= func(res : gpu_resource -> gpu_map_resource_result)
 gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena mut?, short : arena mut? -> v0)
 {
 	impl_gpu_resize_buffer(res, new_size, long, short);
+};
+
+// identical to gpu_resize_buffer, but will early-out if new_size <= gpu_resource_size(res)
+gpu_resize_buffer_at_least ::= func(res : gpu_resource, new_size : u64, long : arena mut?, short : arena mut? -> v0)
+{
+	if(gpu_resource_size(res) < new_size)
+	{
+		gpu_resize_buffer(res, new_size, long, short);
+	}
 };
 
 // resizes an image. does not preserve old data - the new image memory is entirely zero'd

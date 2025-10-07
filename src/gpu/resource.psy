@@ -141,9 +141,8 @@ impl_gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena
 {
 	resptr ::= resource.data # (res@s64);
 	oldinfo ::= resptr->info;
-	olddata ::= oldinfo.data;
-	olddatasize ::= oldinfo.data_size;
-	if(olddatasize == new_size)
+	newinfo : gpu_resource_info mut := oldinfo;
+	if((oldinfo.data_size) == new_size)
 	{
 		return;
 	}
@@ -151,21 +150,29 @@ impl_gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena
 	vk.device_wait_idle(hardware.used_device);
 	vk.destroy_buffer(hardware.used_device, resptr->vk_handle, zero);
 
-	if(new_size > olddatasize)
+	if(new_size > (oldinfo.data_size))
 	{
 		// ok a bit of trouble. old data is too small. need to realloc to be large enough.
-		oldinfo.data = arena_alloc(long, new_size);
-		oldinfo.data_size = new_size;
+		newinfo.data = arena_alloc(long, new_size);
+		newinfo.data_size = new_size;
 
 		// preserve old data
-		memcopy(oldinfo.data, olddata, olddatasize);
+		if((oldinfo.flags & (gpu_resource_flag.zero_memory)) != zero)
+		{
+			// it was zerod
+			memzero(newinfo.data, oldinfo.data_size);
+		}
+		else
+		{
+			memcopy(newinfo.data, oldinfo.data, oldinfo.data_size);
+		}
 		// fill the rest with zeros.
-		offset_ptr ::= (oldinfo.data)@u8 mut? mut;
-		offset_ptr = offset_ptr # olddatasize;
-		memfill(offset_ptr, 0, new_size - olddatasize);
+		offset_ptr ::= (newinfo.data)@u8 mut? mut;
+		offset_ptr = (offset_ptr # (oldinfo.data_size));
+		memzero(offset_ptr, new_size - (oldinfo.data_size));
 	}
 
-	impl_init_buffer(resptr, oldinfo, long);
+	impl_init_buffer(resptr, newinfo, long);
 
 	// problem is, all the passes that use this buffer as a resource will need to have their metabuffer written to.
 	// this is because the metabuffer will contain the BDA of the old buffer which is now out of date.
