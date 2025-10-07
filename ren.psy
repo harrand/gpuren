@@ -2,3 +2,106 @@
 {
 	add_source_directory("src/ren");
 }
+
+ren_mesh_index ::= enum{};
+
+ren_mesh_data ::= struct
+{
+	// array of u8?, each pointing to a memory blk of vertex size
+	vertices : u8 mut? mut?;
+	vertices_count : u64;
+	indices : ren_mesh_index mut?;
+	indices_count : u64;
+};
+
+ren_mesh_handle ::= enum{};
+
+ren_mesh_storage_info ::= struct
+{
+	vertex_size_bytes : u64;
+};
+
+ren_mesh_storage ::= struct
+{
+	info : ren_mesh_storage_info;
+	vertex_buffer : gpu_resource;
+	vertex_cursor : u64;
+	index_buffer : gpu_resource;
+	index_cursor : u64;
+
+	meshes : mesh_locator mut?;
+	meshes_count : u64;
+	meshes_cap : u64;
+};
+
+mesh_locator ::= struct
+{
+	// offset into vertex buffer
+	voff : u64;
+	// vertex count
+	vlen : u64;
+	// offset into index buffer
+	ioff : u64;
+	// index count
+	ilen : u64;
+};
+
+ren_create_mesh_storage ::= func(info : ren_mesh_storage_info -> ren_mesh_storage)
+{
+	return impl_ren_create_mesh_storage(info);
+};
+
+ren_mesh_storage_add ::= func(m : ren_mesh_storage mut?, data : ren_mesh_data -> ren_mesh_handle)
+{
+	return impl_ren_mesh_storage_add(m, data);
+};
+
+ren_mesh_storage_vertex_size ::= func(m : ren_mesh_storage? -> u64)
+{
+	return impl_ren_mesh_storage_vertex_size(m);
+};
+
+ren_mesh_storage_index_size ::= func(m : ren_mesh_storage? -> u64)
+{
+	return impl_ren_mesh_storage_index_size(m);
+};
+
+ren_draw_list_info ::= struct
+{
+};
+
+ren_draw_list ::= struct
+{
+	indirect_buffer : gpu_resource;
+	count : u64;
+	free_list : u64 mut?;
+	free_list_count : u64;
+	free_list_cap : u64;
+};
+
+ren_draw_handle ::= enum{};
+
+ren_create_draw_list ::= func(info : ren_draw_list_info -> ren_draw_list)
+{
+	return impl_ren_create_draw_list(info);
+};
+
+ren_draw_list_set_mesh ::= func(d : ren_draw_list mut?, h : ren_draw_handle, mesh : mesh_locator -> v0)
+{
+	impl_ren_draw_list_set_mesh(d, h, mesh);
+};
+
+ren_draw_list_add_mesh ::= func(d : ren_draw_list mut?, mesh : mesh_locator -> ren_draw_handle)
+{
+	return impl_ren_draw_list_add_mesh(d, mesh);
+};
+
+ren_draw_list_remove ::= func(d : ren_draw_list mut?, h : ren_draw_handle -> v0)
+{
+	impl_ren_draw_list_remove(d, h);
+};
+
+ren_draw_list_count ::= func(d : ren_draw_list mut? -> u64)
+{
+	return impl_ren_draw_list_count(d);
+};

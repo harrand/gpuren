@@ -1,18 +1,8 @@
-draw_list ::= struct
-{
-	indirect_buffer : gpu_resource;
-	count : u64;
-	free_list : u64 mut?;
-	free_list_count : u64;
-	free_list_cap : u64;
-};
-
-draw_handle ::= enum{};
-
 // create a new draw list
 // initial_maximum_draw_count => initial capacity of draws before having to resize internal buffers
-create_draw_list ::= func(initial_maximum_draw_count : u64 -> draw_list)
+impl_ren_create_draw_list ::= func(info : ren_draw_list_info -> ren_draw_list)
 {
+	initial_maximum_draw_count ::= 8092;
 	ib ::= gpu_create_buffer(gpu_resource_info
 	{
 		.data_size := __sizeof(u32) + (__sizeof(gpu_draw_indexed_command) * initial_maximum_draw_count);
@@ -21,7 +11,7 @@ create_draw_list ::= func(initial_maximum_draw_count : u64 -> draw_list)
 		.name := "draw buffer";
 	}, global_arena);
 	initial_free_list_cap ::= 64;
-	return draw_list
+	return ren_draw_list
 	{
 		.indirect_buffer := ib.res;
 		.count := 0;
@@ -31,7 +21,7 @@ create_draw_list ::= func(initial_maximum_draw_count : u64 -> draw_list)
 	};
 };
 
-draw_list_set ::= func(d : draw_list mut?, h : draw_handle, mesh : mesh_locator -> v0)
+impl_ren_draw_list_set_mesh ::= func(d : ren_draw_list mut?, h : ren_draw_handle, mesh : mesh_locator -> v0)
 {
 	idx ::= _out_draw_handle(h);
 	cmd ::= gpu_draw_indexed_command
@@ -46,7 +36,7 @@ draw_list_set ::= func(d : draw_list mut?, h : draw_handle, mesh : mesh_locator 
 	gpu_resource_write(d->indirect_buffer, ref cmd, __sizeof(gpu_draw_indexed_command), indirect_offset);
 };
 
-draw_list_add ::= func(d : draw_list mut?, mesh : mesh_locator -> draw_handle)
+impl_ren_draw_list_add_mesh ::= func(d : ren_draw_list mut?, mesh : mesh_locator -> ren_draw_handle)
 {
 	idx : u64 mut := 0;
 	if(d->free_list_count > 0)
@@ -62,7 +52,7 @@ draw_list_add ::= func(d : draw_list mut?, mesh : mesh_locator -> draw_handle)
 	}
 
 	ret ::= _in_draw_handle(idx);
-	draw_list_set(d, ret, mesh);
+	ren_draw_list_set_mesh(d, ret, mesh);
 
 	len32 ::= d->count@u32;
 	gpu_resource_write(d->indirect_buffer, ref len32, __sizeof(len32), 0);
@@ -70,7 +60,7 @@ draw_list_add ::= func(d : draw_list mut?, mesh : mesh_locator -> draw_handle)
 	return ret;
 };
 
-draw_list_remove ::= func(d : draw_list mut?, h : draw_handle -> v0)
+impl_ren_draw_list_remove ::= func(d : ren_draw_list mut?, h : ren_draw_handle -> v0)
 {
 	impl_draw_list_set_degenerate(d, h);
 	while((d->free_list_count) >= (d->free_list_cap))
@@ -85,22 +75,22 @@ draw_list_remove ::= func(d : draw_list mut?, h : draw_handle -> v0)
 	d->free_list_count = (d->free_list_count + 1);
 };
 
-draw_list_count ::= func(d : draw_list mut? -> u64)
+impl_ren_draw_list_count ::= func(d : ren_draw_list mut? -> u64)
 {
 	return d->count;
 };
 
-_in_draw_handle ::= func(idx : u64 -> draw_handle)
+_in_draw_handle ::= func(idx : u64 -> ren_draw_handle)
 {
-	return (idx + 1)@draw_handle;
+	return (idx + 1)@ren_draw_handle;
 };
 
-_out_draw_handle ::= func(handle : draw_handle -> u64)
+_out_draw_handle ::= func(handle : ren_draw_handle -> u64)
 {
 	return ((handle)@s64 - 1)@_;
 };
 
-impl_draw_list_set_degenerate ::= func(d : draw_list mut?, h : draw_handle -> v0)
+impl_draw_list_set_degenerate ::= func(d : ren_draw_list mut?, h : ren_draw_handle -> v0)
 {
-	draw_list_set(d, h, zero@mesh_locator);
+	ren_draw_list_set_mesh(d, h, zero@mesh_locator);
 };

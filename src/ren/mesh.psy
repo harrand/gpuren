@@ -1,66 +1,26 @@
-mesh_vertex_info ::= struct
+impl_ren_create_mesh_storage ::= func(info : ren_mesh_storage_info -> ren_mesh_storage)
 {
-	size_bytes : u64;
-};
-
-mesh_index ::= enum{};
-
-mesh_data ::= struct
-{
-	// array of u8?, each pointing to a memory blk of vertex size
-	vertices : u8 mut? mut?;
-	vertices_count : u64;
-	indices : mesh_index mut?;
-	indices_count : u64;
-};
-
-mesh_handle ::= enum{};
-
-mesh_storage ::= struct
-{
-	vertex_info : mesh_vertex_info;
-	vertex_buffer : gpu_resource;
-	vertex_cursor : u64;
-	index_buffer : gpu_resource;
-	index_cursor : u64;
-
-	meshes : mesh_locator mut?;
-	meshes_count : u64;
-	meshes_cap : u64;
-};
-
-mesh_locator ::= struct
-{
-	// offset into vertex buffer
-	voff : u64;
-	// vertex count
-	vlen : u64;
-	// offset into index buffer
-	ioff : u64;
-	// index count
-	ilen : u64;
-};
-
-create_mesh_storage ::= func(info : mesh_vertex_info, initial_vertex_capacity : u64, initial_index_capacity : u64, initial_mesh_capacity : u64 -> mesh_storage)
-{
+	initial_vertex_capacity ::= 1024;
+	initial_index_capacity ::= 2048;
+	initial_mesh_capacity ::= 128;
 	vb ::= gpu_create_buffer(gpu_resource_info
 	{
-		.data_size := info.size_bytes * initial_vertex_capacity;
+		.data_size := info.vertex_size_bytes * initial_vertex_capacity;
 		.flags := gpu_resource_flag.zero_memory;
 		.buffer_flags := zero;
 		.name := "vertex buffer";
 	}, global_arena);
 	ib ::= gpu_create_buffer(gpu_resource_info
 	{
-		.data_size := __sizeof(mesh_index) * initial_index_capacity;
+		.data_size := __sizeof(ren_mesh_index) * initial_index_capacity;
 		.flags := gpu_resource_flag.zero_memory;
 		.buffer_flags := gpu_buffer_flag.index_buffer;
 		.name := "vertex buffer";
 	}, global_arena);
 
-	return mesh_storage
+	return ren_mesh_storage
 	{
-		.vertex_info := info;
+		.info := info;
 		.vertex_buffer := vb.res;
 		.vertex_cursor := 0;
 		.index_buffer := ib.res;
@@ -71,15 +31,15 @@ create_mesh_storage ::= func(info : mesh_vertex_info, initial_vertex_capacity : 
 	};
 };
 
-mesh_storage_add ::= func(m : mesh_storage mut?, data : mesh_data -> mesh_handle)
+impl_ren_mesh_storage_add ::= func(m : ren_mesh_storage mut?, data : ren_mesh_data -> ren_mesh_handle)
 {
 	// find a gap in the vertex + index buffers and store them there
-	voff ::= impl_mesh_storage_find_vtx_gap(m, data.vertices_count);
-	ioff ::= impl_mesh_storage_find_idx_gap(m, data.indices_count);
+	voff ::= impl_ren_mesh_storage_find_vtx_gap(m, data.vertices_count);
+	ioff ::= impl_ren_mesh_storage_find_idx_gap(m, data.indices_count);
 
 	// make sure we have enough space
-	gpu_resize_buffer_at_least(m->vertex_buffer, (data.vertices_count + voff) * mesh_storage_vertex_size(m), global_arena, frame_arena);
-	gpu_resize_buffer_at_least(m->index_buffer, (data.indices_count + ioff) * mesh_storage_index_size(m), global_arena, frame_arena);
+	gpu_resize_buffer_at_least(m->vertex_buffer, (data.vertices_count + voff) * ren_mesh_storage_vertex_size(m), global_arena, frame_arena);
+	gpu_resize_buffer_at_least(m->index_buffer, (data.indices_count + ioff) * ren_mesh_storage_index_size(m), global_arena, frame_arena);
 
 	// todo: when we support gaps in buffers maybe we check for -1 (i.e no gap)
 	// use that to populate a mesh_locator
@@ -90,45 +50,45 @@ mesh_storage_add ::= func(m : mesh_storage mut?, data : mesh_data -> mesh_handle
 		.ioff := ioff;
 		.ilen := data.indices_count;
 	};
-	// add the mesh_locator to mesh_storage.meshes and return _in_mesh_handle(idx within meshes)
+	// add the mesh_locator to ren_mesh_storage.meshes and return _in_ren_mesh_handle(idx within meshes)
 	idx ::= m->meshes_count;
 	m->meshes_count = (m->meshes_count + 1);
 	deref(m->meshes # idx) = loc;
 
 	// do the writes
-	gpu_resource_write(m->vertex_buffer, data.vertices, data.vertices_count * mesh_storage_vertex_size(m), voff * mesh_storage_vertex_size(m));
-	gpu_resource_write(m->index_buffer, data.indices, data.indices_count * mesh_storage_index_size(m), ioff * mesh_storage_index_size(m));
+	gpu_resource_write(m->vertex_buffer, data.vertices, data.vertices_count * ren_mesh_storage_vertex_size(m), voff * ren_mesh_storage_vertex_size(m));
+	gpu_resource_write(m->index_buffer, data.indices, data.indices_count * ren_mesh_storage_index_size(m), ioff * ren_mesh_storage_index_size(m));
 	m->vertex_cursor = (m->vertex_cursor + (data.vertices_count));
 	m->index_cursor = (m->index_cursor + (data.indices_count));
-	return _in_mesh_handle(idx);
+	return _in_ren_mesh_handle(idx);
 };
 
-mesh_storage_vertex_size ::= func(m : mesh_storage? -> u64)
+impl_ren_mesh_storage_vertex_size ::= func(m : ren_mesh_storage? -> u64)
 {
-	return m->vertex_info.size_bytes;
+	return m->info.vertex_size_bytes;
 };
 
-mesh_storage_index_size ::= func(m : mesh_storage? -> u64)
+impl_ren_mesh_storage_index_size ::= func(m : ren_mesh_storage? -> u64)
 {
-	return __sizeof(mesh_index);
+	return __sizeof(ren_mesh_index);
 };
 
-_in_mesh_handle ::= func(idx : u64 -> mesh_handle)
+_in_ren_mesh_handle ::= func(idx : u64 -> ren_mesh_handle)
 {
-	return (idx + 1)@mesh_handle;
+	return (idx + 1)@ren_mesh_handle;
 };
 
-_out_mesh_handle ::= func(handle : mesh_handle -> u64)
+_out_ren_mesh_handle ::= func(handle : ren_mesh_handle -> u64)
 {
 	return ((handle)@s64 - 1)@_;
 };
 
-impl_mesh_storage_find_vtx_gap ::= func(m : mesh_storage?, vertex_count : u64 -> u64)
+impl_ren_mesh_storage_find_vtx_gap ::= func(m : ren_mesh_storage?, vertex_count : u64 -> u64)
 {
 	return m->vertex_cursor;
 };
 
-impl_mesh_storage_find_idx_gap ::= func(m : mesh_storage?, index_count : u64 -> u64)
+impl_ren_mesh_storage_find_idx_gap ::= func(m : ren_mesh_storage?, index_count : u64 -> u64)
 {
 	return m->index_cursor;
 };
