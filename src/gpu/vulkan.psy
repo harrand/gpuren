@@ -6,7 +6,7 @@ static if(_win32)
 }
 else
 {
-	__error("psygpu(vulkan) is only supported on windows right now");
+	__error("gpuren(vulkan) is only supported on windows right now");
 }
 
 // VkResult = s32 weak

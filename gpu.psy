@@ -1,6 +1,6 @@
 == default ==
 {
-	add_source_directory("src");
+	add_source_directory("src/gpu");
 }
 
 gpu_wsi_type ::= enum

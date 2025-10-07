@@ -1,0 +1,129 @@
+mesh_vertex ::= struct
+{
+	position : f32[3];
+	pad0 : f32;
+	texcoord : f32[2];
+	pad1 : f32[2];
+	normal : f32[3];
+	pad2 : f32;
+	tangent : f32[3];
+	pad3 : f32;
+	joint_indices : u32[4];
+	joint_weights : f32[4];
+};
+
+mesh_index ::= enum{};
+
+mesh_data ::= struct
+{
+	vertices : mesh_vertex mut?;
+	vertices_count : u64;
+	indices : mesh_index mut?;
+	indices_count : u64;
+};
+
+mesh_handle ::= enum{};
+
+mesh_storage ::= struct
+{
+	vertex_buffer : gpu_resource;
+	vertex_cursor : u64;
+	index_buffer : gpu_resource;
+	index_cursor : u64;
+
+	meshes : mesh_locator mut?;
+	meshes_count : u64;
+	meshes_cap : u64;
+};
+
+mesh_locator ::= struct
+{
+	// offset into vertex buffer
+	voff : u64;
+	// vertex count
+	vlen : u64;
+	// offset into index buffer
+	ioff : u64;
+	// index count
+	ilen : u64;
+};
+
+create_mesh_storage ::= func(initial_vertex_capacity : u64, initial_index_capacity : u64, initial_mesh_capacity : u64 -> mesh_storage)
+{
+	vb ::= gpu_create_buffer(gpu_resource_info
+	{
+		.data_size := __sizeof(mesh_vertex) * initial_vertex_capacity;
+		.flags := gpu_resource_flag.zero_memory;
+		.buffer_flags := zero;
+		.name := "vertex buffer";
+	}, global_arena);
+	ib ::= gpu_create_buffer(gpu_resource_info
+	{
+		.data_size := __sizeof(mesh_index) * initial_index_capacity;
+		.flags := gpu_resource_flag.zero_memory;
+		.buffer_flags := gpu_buffer_flag.index_buffer;
+		.name := "vertex buffer";
+	}, global_arena);
+
+	return mesh_storage
+	{
+		.vertex_buffer := vb.res;
+		.index_buffer := ib.res;
+		.meshes := arena_alloc(global_arena, __sizeof(mesh_locator) * initial_mesh_capacity);
+		.meshes_count := zero;
+		.meshes_cap := initial_mesh_capacity;
+	};
+};
+
+mesh_storage_add ::= func(m : mesh_storage mut?, data : mesh_data -> mesh_handle)
+{
+	// find a gap in the vertex + index buffers and store them there
+	voff ::= impl_mesh_storage_find_vtx_gap(m, data.vertices_count);
+	ioff ::= impl_mesh_storage_find_idx_gap(m, data.indices_count);
+
+	// make sure we have enough space
+	gpu_resize_buffer_at_least(m->vertex_buffer, (data.vertices_count + voff) * __sizeof(mesh_vertex), global_arena, frame_arena);
+	gpu_resize_buffer_at_least(m->index_buffer, (data.indices_count + ioff) * __sizeof(mesh_index), global_arena, frame_arena);
+
+	// todo: when we support gaps in buffers maybe we check for -1 (i.e no gap)
+	// use that to populate a mesh_locator
+	loc ::= mesh_locator
+	{
+		.voff := voff;
+		.vlen := data.vertices_count;
+		.ioff := ioff;
+		.ilen := data.indices_count;
+	};
+	// add the mesh_locator to mesh_storage.meshes and return _in_mesh_handle(idx within meshes)
+	idx ::= m->meshes_count;
+	m->meshes_count = (m->meshes_count + 1);
+	deref(m->meshes # idx) = loc;
+
+	// do the writes
+	gpu_resource_write(m->vertex_buffer, data.vertices, data.vertices_count * __sizeof(mesh_vertex), voff * __sizeof(mesh_vertex));
+	gpu_resource_write(m->index_buffer, data.indices, data.indices_count * __sizeof(mesh_index), ioff * __sizeof(mesh_index));
+	m->vertex_cursor = (m->vertex_cursor + (data.vertices_count));
+	m->index_cursor = (m->index_cursor + (data.indices_count));
+	return _in_mesh_handle(idx);
+};
+
+_in_mesh_handle ::= func(idx : u64 -> mesh_handle)
+{
+	return (idx + 1)@mesh_handle;
+};
+
+_out_mesh_handle ::= func(handle : mesh_handle -> u64)
+{
+	return ((handle)@s64 - 1)@_;
+};
+
+impl_mesh_storage_find_vtx_gap ::= func(m : mesh_storage?, vertex_count : u64 -> u64)
+{
+	return m->vertex_cursor;
+};
+
+impl_mesh_storage_find_idx_gap ::= func(m : mesh_storage?, index_count : u64 -> u64)
+{
+	return m->index_cursor;
+};
+
