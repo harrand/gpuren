@@ -415,7 +415,7 @@ gpu_image_flag ::= enum
 
 gpu_resource_flag ::= enum
 { 
-	// ignore gpu_resource_info.data, fill size with zeroes.
+	// ignore the contents of gpu_resource_info.data (pointer must be zero to entirely ignore), fill size with zeroes.
 	.zero_memory := 0b00000001;
 };
 

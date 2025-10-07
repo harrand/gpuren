@@ -5,6 +5,7 @@ impl_ren_create_draw_list ::= func(info : ren_draw_list_info -> ren_draw_list)
 	initial_maximum_draw_count ::= 8092;
 	ib ::= gpu_create_buffer(gpu_resource_info
 	{
+		.data := zero;
 		.data_size := __sizeof(u32) + (__sizeof(gpu_draw_indexed_command) * initial_maximum_draw_count);
 		.flags := gpu_resource_flag.zero_memory;
 		.buffer_flags := gpu_buffer_flag.draw_buffer;
@@ -78,6 +79,12 @@ impl_ren_draw_list_remove ::= func(d : ren_draw_list mut?, h : ren_draw_handle -
 impl_ren_draw_list_count ::= func(d : ren_draw_list mut? -> u64)
 {
 	return d->count;
+};
+
+impl_ren_draw_list_capacity ::= func(d : ren_draw_list mut? -> u64)
+{
+	capacity_incl_indirect_count_bytes ::= gpu_resource_size(d->indirect_buffer);
+	return (capacity_incl_indirect_count_bytes - __sizeof(u32)) / __sizeof(gpu_draw_indexed_command);
 };
 
 _in_draw_handle ::= func(idx : u64 -> ren_draw_handle)

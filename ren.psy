@@ -8,7 +8,7 @@ ren_mesh_index ::= enum{};
 ren_mesh_data ::= struct
 {
 	// array of u8?, each pointing to a memory blk of vertex size
-	vertices : u8 mut? mut?;
+	vertices : u8 mut? mut? weak;
 	vertices_count : u64;
 	indices : ren_mesh_index mut?;
 	indices_count : u64;
@@ -101,7 +101,12 @@ ren_draw_list_remove ::= func(d : ren_draw_list mut?, h : ren_draw_handle -> v0)
 	impl_ren_draw_list_remove(d, h);
 };
 
-ren_draw_list_count ::= func(d : ren_draw_list mut? -> u64)
+ren_draw_list_count ::= func(d : ren_draw_list? -> u64)
 {
 	return impl_ren_draw_list_count(d);
+};
+
+ren_draw_list_capacity ::= func(d : ren_draw_list? -> u64)
+{
+	return impl_ren_draw_list_capacity(d);
 };
