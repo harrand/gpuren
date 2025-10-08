@@ -81,7 +81,7 @@ impl_gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, dependencies : u64
 	entry_ptr ::= (graphptr->timeline) # cur;
 	(entry_ptr->handle) = (p@s64@_);
 	entry_ptr->is_graph = false;
-	(graphptr->timeline_count) = (graphptr->timeline_count) + 1;
+	(graphptr->timeline_count) = ((graphptr->timeline_count) + 1);
 
 	deref(graphptr->dependencies # cur) = arena_alloc(a, __sizeof(u64) * dependencies_count);
 	i : u64 mut;

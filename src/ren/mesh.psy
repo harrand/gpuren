@@ -8,14 +8,14 @@ impl_ren_create_mesh_storage ::= func(info : ren_mesh_storage_info -> ren_mesh_s
 		.data_size := info.vertex_size_bytes * initial_vertex_capacity;
 		.flags := gpu_resource_flag.zero_memory;
 		.buffer_flags := zero;
-		.name := "vertex buffer";
+		.name := "Vertex Buffer";
 	}, global_arena);
 	ib ::= gpu_create_buffer(gpu_resource_info
 	{
-		.data_size := __sizeof(ren_mesh_index) * initial_index_capacity;
+		.data_size := __sizeof(u32) * initial_index_capacity;
 		.flags := gpu_resource_flag.zero_memory;
 		.buffer_flags := gpu_buffer_flag.index_buffer;
-		.name := "vertex buffer";
+		.name := "Index Buffer";
 	}, global_arena);
 
 	return ren_mesh_storage
@@ -70,7 +70,13 @@ impl_ren_mesh_storage_vertex_size ::= func(m : ren_mesh_storage? -> u64)
 
 impl_ren_mesh_storage_index_size ::= func(m : ren_mesh_storage? -> u64)
 {
-	return __sizeof(ren_mesh_index);
+	return __sizeof(u32);
+};
+
+impl_ren_mesh_storage_get_mesh ::= func(m : ren_mesh_storage?, h : ren_mesh_handle -> mesh_locator)
+{
+	idx ::= _out_ren_mesh_handle(h);
+	return deref(m->meshes # idx);
 };
 
 _in_ren_mesh_handle ::= func(idx : u64 -> ren_mesh_handle)

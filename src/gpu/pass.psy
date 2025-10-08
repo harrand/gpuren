@@ -68,11 +68,31 @@ impl_pass_gpu_has_view_been_cleared_before ::= func(image_view : u64, options : 
 	return false;
 };
 
+impl_pass_info_deep_copy ::= func(info : gpu_pass_info, long : arena mut? -> gpu_pass_info)
+{
+	ret : gpu_pass_info mut := info;
+	// resources data needs to be deep copied
+	resource_data_cpy ::= arena_alloc(long, __sizeof(deref (info.resources_data)) * info.resources_count);
+	memcopy(resource_data_cpy, info.resources_data, __sizeof(deref (info.resources_data)) * info.resources_count);
+	ret.resources_data = resource_data_cpy;
+
+	if(!impl_shader_is_compute(info.shader))
+	{
+		// and graphics colour target data
+		graphics : gpu_graphics_state mut := info.graphics;
+		colour_targets_data_cpy ::= arena_alloc(long, __sizeof(deref (graphics.colour_targets_data)) * graphics.colour_targets_count);
+		memcopy(colour_targets_data_cpy, graphics.colour_targets_data, __sizeof(deref (graphics.colour_targets_data)) * graphics.colour_targets_count);
+		graphics.colour_targets_data = colour_targets_data_cpy;
+		ret.graphics = graphics;
+	}
+	return ret;
+};
+
 impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : arena mut? -> gpu_pass_result)
 {
 	retid ::= pass.count;
 	passptr ::= impl_alloc_new_pass(long);
-	passptr->info = info;
+	passptr->info = impl_pass_info_deep_copy(info, long);
 	// first thing we need is a metabuffer.
 	// this is a non-BDA buffer that contains all the BDA addresses.
 	// let's figure out how many buffer resources we have
@@ -125,7 +145,6 @@ impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : a
 	memcopy(metabuf_debug_name_str # prefixlen, passptr->info.name, namelen);
 
 	impl_label_buffer(hardware.used_device, passptr->metabuf, metabuf_debug_name_str);
-
 
 	passptr->targets_swapchain = false;
 
