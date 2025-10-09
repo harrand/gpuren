@@ -156,16 +156,8 @@ impl_gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena
 		newinfo.data = arena_alloc(long, new_size);
 		newinfo.data_size = new_size;
 
-		// preserve old data
-		if((oldinfo.flags & (gpu_resource_flag.zero_memory)) != zero)
-		{
-			// it was zerod
-			memzero(newinfo.data, oldinfo.data_size);
-		}
-		else
-		{
-			memcopy(newinfo.data, oldinfo.data, oldinfo.data_size);
-		}
+		// preserve old data. remember - just because it was zero'd initially doesnt mean its zero'd now
+		memcopy(newinfo.data, oldinfo.data, oldinfo.data_size);
 		// fill the rest with zeros.
 		offset_ptr ::= (newinfo.data)@u8 mut? mut;
 		offset_ptr = (offset_ptr # (oldinfo.data_size));
@@ -453,6 +445,10 @@ impl_init_buffer ::= func(resptr : resource_data_t mut?, info : gpu_resource_inf
 	if(((info.flags) & (gpu_resource_flag.zero_memory)) != zero)
 	{
 		memfill(resinfo->data, 0, info.data_size);
+		// now remove the zero_memory flag from now on as it only applies now
+		flagval : s64 mut := resinfo->flags@s64;
+		flagval = (flagval & (~(gpu_resource_flag.zero_memory@s64)));
+		resinfo->flags = (flagval@_);
 	}
 
 	// write resource data to gpu memory.

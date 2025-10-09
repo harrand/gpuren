@@ -5,6 +5,7 @@ impl_ren_create_mesh_storage ::= func(info : ren_mesh_storage_info -> ren_mesh_s
 	initial_mesh_capacity ::= 128;
 	vb ::= gpu_create_buffer(gpu_resource_info
 	{
+		.data := zero;
 		.data_size := info.vertex_size_bytes * initial_vertex_capacity;
 		.flags := gpu_resource_flag.zero_memory;
 		.buffer_flags := zero;
@@ -12,6 +13,7 @@ impl_ren_create_mesh_storage ::= func(info : ren_mesh_storage_info -> ren_mesh_s
 	}, global_arena);
 	ib ::= gpu_create_buffer(gpu_resource_info
 	{
+		.data := zero;
 		.data_size := __sizeof(u32) * initial_index_capacity;
 		.flags := gpu_resource_flag.zero_memory;
 		.buffer_flags := gpu_buffer_flag.index_buffer;
@@ -50,6 +52,7 @@ impl_ren_mesh_storage_add ::= func(m : ren_mesh_storage mut?, data : ren_mesh_da
 		.ioff := ioff;
 		.ilen := data.indices_count;
 	};
+
 	// add the mesh_locator to ren_mesh_storage.meshes and return _in_ren_mesh_handle(idx within meshes)
 	idx ::= m->meshes_count;
 	m->meshes_count = (m->meshes_count + 1);

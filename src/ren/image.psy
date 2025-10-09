@@ -1,0 +1,12 @@
+image_storage_info ::= struct
+{
+	absolute_maximum_image_count : u64;
+};
+
+image_storage ::= struct
+{
+};
+
+create_image_storage ::= func(info : image_storage_info -> image_storage)
+{
+};
