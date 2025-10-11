@@ -411,6 +411,7 @@ gpu_buffer_flag ::= enum
 gpu_image_flag ::= enum
 {
 	.none := 0;
+	.colour_attachment := 1;
 };
 
 gpu_resource_flag ::= enum

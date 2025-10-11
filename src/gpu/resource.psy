@@ -508,6 +508,10 @@ impl_init_image ::= func(resptr : resource_data_t mut?, info : gpu_resource_info
 		.pQueueFamilyIndices := ref(hardware.used_qfi);
 		.initialLayout := 0;
 	};
+	if((info.image_flags & (gpu_image_flag.colour_attachment)) != zero)
+	{
+		create.usage = (create.usage | 0x00000010); // VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+	}
 	vk_check(vk.create_image(hardware.used_device, ref create, zero, ref (resptr->vk_handle)));
 	impl_bind_image_mem(resptr->vk_handle);
 
