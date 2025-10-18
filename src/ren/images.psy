@@ -1,0 +1,67 @@
+impl_ren_create_image_storage ::= func(info : ren_image_storage_info -> ren_image_storage)
+{
+	ret ::= ren_image_storage mut
+	{
+		.images := arena_alloc(global_arena, info.image_capacity * __sizeof(gpu_resource));
+		.images_count := info.image_capacity;
+		.images_cursor := zero;
+	};
+	defer return ret;
+	i : u64 mut;
+	for(i = 0, i < (info.image_capacity), i = i + 1)
+	{
+		result ::= gpu_create_image(gpu_resource_info
+		{
+			.data := zero;
+			.data_size := 4 * 1 * 1;
+			.image_dimensions := u32[2]{1; 1;};
+			.image_type := gpu_image_type.rgba;
+			.flags := gpu_resource_flag.zero_memory;
+			.buffer_flags := zero;
+			.image_flags := zero;
+			.name := "ren image";
+		}, global_arena);
+		// todo: check result
+		deref(ret.images # i) = (result.res);
+	}
+};
+
+impl_ren_image_storage_capacity ::= func(i : ren_image_storage? -> u64)
+{
+	return i->images_count;
+};
+
+impl_ren_image_storage_count ::= func(i : ren_image_storage? -> u64)
+{
+	return i->images_cursor;
+};
+
+impl_ren_image_storage_get_resource ::= func(i : ren_image_storage?, buf : gpu_resource mut?, len : u64 -> u64)
+{
+	real_len : u64 mut := len;
+	defer return real_len;
+	cap ::= ren_image_storage_capacity(i);
+	if(cap < real_len)
+	{
+		real_len = cap;
+	}
+	j : u64 mut;
+	for(j = 0, j < real_len, j = j + 1)
+	{
+		deref(buf # j) = deref(i->images # j);
+	}
+};
+
+impl_ren_image_storage_add ::= func(i : ren_image_storage mut?, image : ren_image_info -> u64)
+{
+	idx ::= i->images_cursor;
+	(i->images_cursor) = (i->images_cursor + 1);
+	defer return idx;
+	img ::= deref(i->images # idx);
+
+	// todo: need to change the format of the image too...
+	// or just store depth images separately...
+	// pretending it doesnt exist for now
+	gpu_resize_image(img, image.dimensions, global_arena, frame_arena);
+	gpu_resource_write(img, image.data, image.data_size, zero);
+};

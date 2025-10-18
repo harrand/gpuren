@@ -113,3 +113,54 @@ ren_draw_list_capacity ::= func(d : ren_draw_list? -> u64)
 {
 	return impl_ren_draw_list_capacity(d);
 };
+
+ren_image_storage_info ::= struct
+{
+	image_capacity : u64;
+};
+
+ren_image_storage ::= struct
+{
+	images : gpu_resource mut?;
+	images_count : u64;
+	images_cursor : u64;
+};
+
+ren_image_info ::= struct
+{
+	data : v0? weak;
+	data_size : u64;
+	dimensions : u32[2];
+	type : gpu_image_type;
+	flags : gpu_resource_flag;
+};
+
+ren_image ::= enum
+{
+	.invalid := -1;
+};
+
+ren_create_image_storage ::= func(info : ren_image_storage_info -> ren_image_storage)
+{
+	return impl_ren_create_image_storage(info);
+};
+
+ren_image_storage_capacity ::= func(i : ren_image_storage? -> u64)
+{
+	return impl_ren_image_storage_capacity(i);
+};
+
+ren_image_storage_count ::= func(i : ren_image_storage? -> u64)
+{
+	return impl_ren_image_storage_count(i);
+};
+
+ren_image_storage_get_resources ::= func(i : ren_image_storage?, buf : gpu_resource mut?, len : u64 -> u64)
+{
+	return impl_ren_image_storage_get_resource(i, buf, len);
+};
+
+ren_image_storage_add ::= func(i : ren_image_storage mut?, image : ren_image_info -> u64)
+{
+	return impl_ren_image_storage_add(i, image);
+};
