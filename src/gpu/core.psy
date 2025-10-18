@@ -846,11 +846,6 @@ impl_end_and_execute_scratch_commands ::= func( -> v0)
 	vk_check(vk.reset_fences(hardware.used_device, 1, ref (core.scratch.fence)));
 };
 
-static if(_win32)
-{
-	Sleep ::= func(dwMilliseconds : u32 -> v0) := extern;
-}
-
 impl_host_wait_event ::= func(event : u64, poll_interval_ms : u32 -> v0)
 {
 	while(true)
@@ -860,15 +855,7 @@ impl_host_wait_event ::= func(event : u64, poll_interval_ms : u32 -> v0)
 		{
 			return;
 		}
-		// sleepy time (or spin...)
-		static if(_win32)
-		{
-			Sleep(poll_interval_ms);
-		}
-		else
-		{
-			__error("todo: fixme on linux");
-		}
+		sleep(poll_interval_ms@_);
 	}
 };
 
