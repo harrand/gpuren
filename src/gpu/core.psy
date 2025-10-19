@@ -11,8 +11,6 @@ core_state ::= struct
 	initialised : bool;
 };
 
-rgba_format ::= 37;
-depth_format ::= 126;
 frame_overlap ::= 2;
 valloc_initial_size : u64 static := (512 * 1024 * 1024); // 512 mib
 valloc_t ::= struct
@@ -723,9 +721,11 @@ impl_create_graphics_pipeline ::= func(s : gpu_shader, graphics : gpu_graphics_s
 	color_formats : s32 mut? := arena_alloc(a, __sizeof(s32) * (graphics.colour_targets_count));
 	for(counter = 0, counter < (graphics.colour_targets_count), counter = counter + 1)
 	{
-		deref(color_formats # counter) = rgba_format;
+		res ::= deref(graphics.colour_targets_data # counter);
+		deref(color_formats # counter) = impl_image_pixel_format_colour_aspect(res);
 	}
 	counter = 0;
+
 
 	rendering ::= VkPipelineRenderingCreateInfo
 	{
@@ -734,7 +734,7 @@ impl_create_graphics_pipeline ::= func(s : gpu_shader, graphics : gpu_graphics_s
 		.viewMask := 0;
 		.colorAttachmentCount := (graphics.colour_targets_count)@_;
 		.pColorAttachmentFormats := color_formats;
-		.depthAttachmentFormat := 126;
+		.depthAttachmentFormat := impl_image_pixel_format_depth_aspect(graphics.depth_target);
 		.stencilAttachmentFormat := 0;
 	};
 

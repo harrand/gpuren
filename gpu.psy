@@ -403,21 +403,24 @@ gpu_pass_result ::= struct
 gpu_buffer_flag ::= enum
 {
 	.none := 0b00000000;
+	// buffer memory will be directly accessible from the cpu (i.e BAR) - making writes extremely fast. subject to hardware requirements.
 	.dynamic := 0b00000001;
+	// buffer can be used as an index buffer.
 	.index_buffer := 0b00000010;
+	// buffer can be used as an indirect draw buffer.
 	.draw_buffer := 0b00000100;
 };
 
 gpu_image_flag ::= enum
 {
 	.none := 0b00000000;
-	// image can be used as a colour target
+	// image can be used as a colour target.
 	.colour_attachment := 0b00000001;
 };
 
 gpu_resource_flag ::= enum
 { 
-	// ignore the contents of gpu_resource_info.data (pointer must be zero to entirely ignore), fill size with zeroes.
+	// set the memory contents of the resource to zero upon creation. this overwrites any data initially provided.
 	.zero_memory := 0b00000001;
 };
 
@@ -436,7 +439,8 @@ gpu_map_resource_result ::= struct
 gpu_image_type ::= enum
 {
 	.rgba := 0;
-	.depth := 1;
+	.rgba_float := 1;
+	.depth := 2;
 };
 
 gpu_resource_info ::= struct

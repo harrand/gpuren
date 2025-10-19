@@ -472,16 +472,10 @@ impl_init_image ::= func(resptr : resource_data_t mut?, info : gpu_resource_info
 {
 	resptr->info = info;
 	resptr->is_buffer = false;
-	fmt : s32 mut;
-	aspect_mask : s32 mut;
-	if((info.image_type) == (gpu_image_type.rgba))
-	{
-		fmt = rgba_format;
-		aspect_mask = 0x00000001;
-	}
+	fmt ::= impl_image_type_pixel_format(info.image_type);
+	aspect_mask : s32 mut := 0x00000001;
 	if((info.image_type) == (gpu_image_type.depth))
 	{
-		fmt = depth_format;
 		aspect_mask = 0x00000002;
 	}
 	dims ::= info.image_dimensions;
@@ -649,6 +643,42 @@ impl_image_type_pixel_format ::= func(t : gpu_image_type -> s32)
 		126; // VK_FORMAT_D32_SFLOAT
 	};
 	return deref(arr # (t@s64));
+};
+
+impl_image_pixel_format_colour_aspect ::= func(r : gpu_resource -> s32)
+{
+	// assume the gpu_resource is a valid image or a window_resource
+	if(r == (gpu_resource.window_resource))
+	{
+		// just get the swapchain colour format
+		return swapchain.colour_format;
+	}
+	// not a window resource. its either a user-created resource or something invalid.
+	if(impl_resource_is_real(r))
+	{
+		res ::= resource.data # (r@s64);
+		return impl_image_type_pixel_format(res->info.image_type);
+	}
+	// should kinda panic here. return zero for now.
+	return zero;
+};
+
+impl_image_pixel_format_depth_aspect ::= func(r : gpu_resource -> s32)
+{
+	// assume the gpu_resource is a valid image or a window_resource
+	if(r == (gpu_resource.window_resource))
+	{
+		// just get the swapchain depth format
+		return swapchain.depth_format;
+	}
+	// not a window resource. its either a user-created resource or something invalid.
+	if(impl_resource_is_real(r))
+	{
+		res ::= resource.data # (r@s64);
+		return impl_image_type_pixel_format(res->info.image_type);
+	}
+	// should kinda panic here. return zero for now.
+	return zero;
 };
 
 impl_resource_is_real ::= func(r : gpu_resource -> bool)

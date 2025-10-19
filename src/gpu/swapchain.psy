@@ -13,6 +13,8 @@ swapchain_state ::= struct
 	views : u64 mut?;
 	views_cap : u64;
 
+	colour_format : s32;
+	depth_format : s32;
 	system_image : u64;
 	system_image_view : u64;
 	system_depth_image : u64;
@@ -165,7 +167,7 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> gpu_err)
 		.pNext := zero;
 		.flags := 0;
 		.imageType := 1;
-		.format := rgba_format;
+		.format := swapchain.colour_format;
 		.extent := VkExtent3D
 		{
 			.width := w@_;
@@ -187,7 +189,7 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> gpu_err)
 	impl_bind_image_mem(swapchain.system_image);
 
 	view_create.image = (swapchain.system_image);
-	view_create.format = rgba_format;
+	view_create.format = (swapchain.colour_format);
 	vk_check(vk.create_image_view(hardware.used_device, ref view_create, zero, ref (swapchain.system_image_view)));
 	impl_label_view(hardware.used_device, swapchain.system_image_view, "System Image View");
 
@@ -202,7 +204,7 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> gpu_err)
 		.pNext := zero;
 		.flags := 0;
 		.imageType := 1;
-		.format := depth_format;
+		.format := swapchain.depth_format;
 		.extent := VkExtent3D
 		{
 			.width := w@_;
@@ -224,7 +226,7 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> gpu_err)
 	impl_bind_image_mem(swapchain.system_depth_image);
 
 	view_create.image = (swapchain.system_depth_image);
-	view_create.format = depth_format;
+	view_create.format = (swapchain.depth_format);
 	view_create.subresourceRange.aspectMask = 2; // VK_IMAGE_ASPECT_DEPTH_BIT
 	vk_check(vk.create_image_view(hardware.used_device, ref view_create, zero, ref(swapchain.system_depth_image_view)));
 	impl_label_view(hardware.used_device, swapchain.system_depth_image_view, "System Depth Image View");
