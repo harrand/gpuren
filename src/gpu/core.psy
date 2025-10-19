@@ -14,7 +14,7 @@ core_state ::= struct
 rgba_format ::= 37;
 depth_format ::= 126;
 frame_overlap ::= 2;
-valloc_initial_size : u64 static := (32 * 1024 * 1024); // 32 mib
+valloc_initial_size : u64 static := (512 * 1024 * 1024); // 512 mib
 valloc_t ::= struct
 {
 	device_mem : u64;
