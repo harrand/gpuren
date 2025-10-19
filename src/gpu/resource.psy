@@ -196,15 +196,17 @@ impl_gpu_resize_image ::= func(res : gpu_resource, new_dimensions : u32[2], long
 
 	// if the dimensions change then the data currently sitting in the resource really doesnt make any sense anymore
 	// let's clear it all out
-	resptr->info.data_size = zero;
+	resptr->info.data_size = (4 * deref(new_dimensions # 0) * deref(new_dimensions # 1));
 	resptr->info.data = zero;
 	resptr->info.image_dimensions = new_dimensions;
 	resptr->info.flags = (resptr->info.flags | (gpu_resource_flag.zero_memory));
 
 	vk.device_wait_idle(hardware.used_device);
-	vk.destroy_buffer(hardware.used_device, resptr->vk_handle, zero);
+	vk.destroy_image(hardware.used_device, resptr->vk_handle, zero);
+	vk.destroy_image_view(hardware.used_device, resptr->image_view, zero);
+	vk.destroy_sampler(hardware.used_device, resptr->sampler, zero);
 
-	impl_init_image(resptr, oldinfo, long);
+	impl_init_image(resptr, resptr->info, long);
 
 	// problem is, all the passes that use this image as a resource will need to have their descriptors rewritten.
 	// solution:
@@ -216,7 +218,7 @@ impl_gpu_resize_image ::= func(res : gpu_resource, new_dimensions : u32[2], long
 		{
 			write_err ::= impl_write_resources(pass.data # counter, long, short);
 			// todo: pass this error upwards
-			impl_populate_descriptors(pass.data # counter, long, short);
+			impl_update_descriptors(pass.data # counter, long, short);
 		}
 	}
 };

@@ -135,10 +135,7 @@ ren_image_info ::= struct
 	flags : gpu_resource_flag;
 };
 
-ren_image ::= enum
-{
-	.invalid := -1;
-};
+ren_image_handle ::= enum{};
 
 ren_create_image_storage ::= func(info : ren_image_storage_info -> ren_image_storage)
 {
@@ -160,7 +157,7 @@ ren_image_storage_get_resources ::= func(i : ren_image_storage?, buf : gpu_resou
 	return impl_ren_image_storage_get_resource(i, buf, len);
 };
 
-ren_image_storage_add ::= func(i : ren_image_storage mut?, image : ren_image_info -> u64)
+ren_image_storage_add ::= func(i : ren_image_storage mut?, image : ren_image_info -> ren_image_handle)
 {
 	return impl_ren_image_storage_add(i, image);
 };

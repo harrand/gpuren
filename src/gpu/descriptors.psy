@@ -68,17 +68,12 @@ impl_try_allocate_descriptors ::= func(pool : u64, sets_data : u64 mut?, image_c
 	return (vk.allocate_descriptor_sets(hardware.used_device, ref alloc, sets_data)) == 0;
 };
 
-impl_populate_descriptors ::= func(passptr : pass_data_t mut?, long : arena mut?, short : arena mut? -> gpu_err)
+impl_passptr_get_image_count ::= func(passptr : pass_data_t? -> u32)
 {
 	pinfo ::= passptr->info;
-	if(descriptor.pools_count == 0)
-	{
-		impl_new_descriptor_pool(long);
-	}
-	pool : u64 mut := deref(descriptor.pools_data # (descriptor.pools_count - 1));
+	image_count : u32 mut := 0;
 
 	counter : u64 mut;
-	image_count : u32 mut := 0;
 	cur_resh : gpu_resource mut;
 	resptr : resource_data_t? mut;
 	for(counter = 0, counter < (pinfo.resources_count), counter = counter + 1)
@@ -100,26 +95,15 @@ impl_populate_descriptors ::= func(passptr : pass_data_t mut?, long : arena mut?
 			}
 		}
 	}
+	return image_count;
+};
 
-	// allocate descriptors
-	retry_count : u64 mut := 0;
-	MAX_RETRIES ::= 3;
-	alloc_success : bool mut := impl_try_allocate_descriptors(pool, passptr->descriptor_sets # 0, image_count);
-	while(!alloc_success)
-	{
-		if(retry_count >= MAX_RETRIES)
-		{
-			return gpu_err
-			{
-				.code := gpu_err_code.unknown;
-				.msg := "empty descriptor pool was too small to allocate descriptors for a pass. hardcoded limits have been reached - you probably have way way too many images associated with a pass";
-			};
-		}
-		pool = impl_new_descriptor_pool(long);
-		alloc_success = impl_try_allocate_descriptors(pool, passptr->descriptor_sets # 0, image_count);
-		retry_count = retry_count + 1;
-	}
-
+impl_update_descriptors ::= func(passptr : pass_data_t mut?, long : arena mut?, short : arena mut? -> gpu_err)
+{
+	pinfo ::= passptr->info;
+	image_count ::= impl_passptr_get_image_count(passptr);
+	// assume allocations are all done
+	// just doing writes
 	// write to them.
 	image_array_descriptor_binding ::= 1;
 	image_writes : VkDescriptorImageInfo mut? := arena_alloc(short, __sizeof(VkDescriptorImageInfo) * image_count * frame_overlap);
@@ -165,6 +149,8 @@ impl_populate_descriptors ::= func(passptr : pass_data_t mut?, long : arena mut?
 	i : u32 mut;
 	j : u64 mut;
 	img_cursor : u64 mut := 0;
+	cur_resh : gpu_resource mut;
+	resptr : resource_data_t? mut;
 	for(i = 0, i < frame_overlap, i = i + 1)
 	{
 		for(j = 0, j < (pinfo.resources_count), j = j + 1)
@@ -210,5 +196,36 @@ impl_populate_descriptors ::= func(passptr : pass_data_t mut?, long : arena mut?
 	}
 	vk.update_descriptor_sets(hardware.used_device, write_count, descriptor_writes # 0, 0, zero);
 	return zero;
+};
+
+impl_populate_descriptors ::= func(passptr : pass_data_t mut?, long : arena mut?, short : arena mut? -> gpu_err)
+{
+	if(descriptor.pools_count == 0)
+	{
+		impl_new_descriptor_pool(long);
+	}
+	pool : u64 mut := deref(descriptor.pools_data # (descriptor.pools_count - 1));
+	image_count ::= impl_passptr_get_image_count(passptr);
+
+	// allocate descriptors
+	retry_count : u64 mut := 0;
+	MAX_RETRIES ::= 3;
+	alloc_success : bool mut := impl_try_allocate_descriptors(pool, passptr->descriptor_sets # 0, image_count);
+	while(!alloc_success)
+	{
+		if(retry_count >= MAX_RETRIES)
+		{
+			return gpu_err
+			{
+				.code := gpu_err_code.unknown;
+				.msg := "empty descriptor pool was too small to allocate descriptors for a pass. hardcoded limits have been reached - you probably have way way too many images associated with a pass";
+			};
+		}
+		pool = impl_new_descriptor_pool(long);
+		alloc_success = impl_try_allocate_descriptors(pool, passptr->descriptor_sets # 0, image_count);
+		retry_count = retry_count + 1;
+	}
+
+	return impl_update_descriptors(passptr, long, short);
 };
 

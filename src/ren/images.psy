@@ -52,11 +52,10 @@ impl_ren_image_storage_get_resource ::= func(i : ren_image_storage?, buf : gpu_r
 	}
 };
 
-impl_ren_image_storage_add ::= func(i : ren_image_storage mut?, image : ren_image_info -> u64)
+impl_ren_image_storage_add ::= func(i : ren_image_storage mut?, image : ren_image_info -> ren_image_handle)
 {
 	idx ::= i->images_cursor;
 	(i->images_cursor) = (i->images_cursor + 1);
-	defer return idx;
 	img ::= deref(i->images # idx);
 
 	// todo: need to change the format of the image too...
@@ -64,4 +63,15 @@ impl_ren_image_storage_add ::= func(i : ren_image_storage mut?, image : ren_imag
 	// pretending it doesnt exist for now
 	gpu_resize_image(img, image.dimensions, global_arena, frame_arena);
 	gpu_resource_write(img, image.data, image.data_size, zero);
+	return _in_ren_image_handle(idx);
+};
+
+_in_ren_image_handle ::= func(idx : u64 -> ren_image_handle)
+{
+	return (idx + 1)@ren_image_handle;
+};
+
+_out_ren_image_handle ::= func(handle : ren_image_handle -> u64)
+{
+	return ((handle)@s64 - 1)@_;
 };
