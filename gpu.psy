@@ -416,6 +416,8 @@ gpu_image_flag ::= enum
 	.none := 0b00000000;
 	// image can be used as a colour target.
 	.colour_attachment := 0b00000001;
+	// image can be used as a depth target.
+	.depth_attachment := 0b00000010;
 };
 
 gpu_resource_flag ::= enum
