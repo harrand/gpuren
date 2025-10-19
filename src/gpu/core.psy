@@ -494,7 +494,6 @@ impl_bind_image_mem ::= func(image : u64 -> gpu_err)
 		putzstr("voom when binding image memory. todo: multiple allocations");
 		__debugbreak();
 	}
-	// todo: align safely.
 	valloc->cursor = (valloc->cursor) + imgsize;
 	return zero;
 };
