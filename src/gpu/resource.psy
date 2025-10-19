@@ -196,9 +196,9 @@ impl_gpu_resize_image ::= func(res : gpu_resource, new_dimensions : u32[2], long
 
 	// if the dimensions change then the data currently sitting in the resource really doesnt make any sense anymore
 	// let's clear it all out
-	resptr->info.data_size = (4 * deref(new_dimensions # 0) * deref(new_dimensions # 1));
 	resptr->info.data = zero;
 	resptr->info.image_dimensions = new_dimensions;
+	resptr->info.data_size = impl_naive_image_size(resptr->info);
 	resptr->info.flags = (resptr->info.flags | (gpu_resource_flag.zero_memory));
 
 	vk.device_wait_idle(hardware.used_device);
@@ -623,3 +623,35 @@ impl_alloc_new_resource ::= func(a : arena mut? -> resource_data_t mut?)
 	return resource.data # id;
 };
 
+impl_image_type_pixel_size ::= func(t : gpu_image_type -> u64)
+{
+	arr ::= u64[3]
+	{
+		4; // .rgba => rgba8
+		8; // .rgba_float => rgba16f
+		4; // .depth => depth32
+	};
+	return deref(arr # (t@s64));
+};
+
+impl_image_type_pixel_format ::= func(t : gpu_image_type -> s32)
+{
+	arr ::= s32[3]
+	{
+		37;  // VK_FORMAT_R8G8B8A8_UNORM
+		97;  // VK_FORMAT_R16G16B16A16_SFLOAT
+		126; // VK_FORMAT_D32_SFLOAT
+	};
+	return deref(arr # (t@s64));
+};
+
+impl_resource_is_real ::= func(r : gpu_resource -> bool)
+{
+	return (r != (gpu_resource.invalid)) && ((r != (gpu_resource.window_resource)));
+};
+
+impl_naive_image_size ::= func(i : gpu_resource_info -> u64)
+{
+	dims ::= i.image_dimensions;
+	return impl_image_type_pixel_size(i.image_type) * deref(dims # 0)@_ * deref(dims # 1)@_;
+};

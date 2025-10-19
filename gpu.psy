@@ -402,16 +402,17 @@ gpu_pass_result ::= struct
 
 gpu_buffer_flag ::= enum
 {
-	.none := 0b0000;
-	.dynamic := 0b0001;
-	.index_buffer := 0b0010;
-	.draw_buffer := 0b0100;
+	.none := 0b00000000;
+	.dynamic := 0b00000001;
+	.index_buffer := 0b00000010;
+	.draw_buffer := 0b00000100;
 };
 
 gpu_image_flag ::= enum
 {
-	.none := 0;
-	.colour_attachment := 1;
+	.none := 0b00000000;
+	// image can be used as a colour target
+	.colour_attachment := 0b00000001;
 };
 
 gpu_resource_flag ::= enum
