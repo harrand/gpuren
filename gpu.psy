@@ -441,13 +441,21 @@ gpu_image_type ::= enum
 
 gpu_resource_info ::= struct
 {
+	// pointer to any data you want to initially write into the resource. if not, leave this as zero.
 	data : v0? weak;
+	// how many bytes do you want to copy from 'data'? if you're creating a buffer, this is also the size of the buffer.
 	data_size : u64;
+	// width and height of the image.
 	image_dimensions : u32[2];
+	// format of the image.
 	image_type : gpu_image_type;
+	// see gpu_resource_flag for details.
 	flags : gpu_resource_flag;
+	// see gpu_buffer_flag for details.
 	buffer_flags : gpu_buffer_flag;
+	// see gpu_image_flag for details.
 	image_flags : gpu_image_flag;
+	// name of the resource. this will be provided to graphics debuggers, and ignored otherwise.
 	name : u8?;
 };
 

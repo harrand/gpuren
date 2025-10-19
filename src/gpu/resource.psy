@@ -568,20 +568,26 @@ impl_init_image ::= func(resptr : resource_data_t mut?, info : gpu_resource_info
 	vk_check(vk.create_sampler(hardware.used_device, ref sampler_create, zero, ref (resptr->sampler)));
 
 	// make a copy of the resource data using the arena.
+	// we want this resource data to be enough for the whole image (as if it was not optimal tiling) for potential transfer purposes later on
+	// and the data_size provided doesn't necessarily need to be that.
+	// so we calculate that now
 	resinfo ::= ref(resptr->info);
-	resinfo->data = arena_alloc(a, info.data_size);
+	resinfo->data_size = impl_naive_image_size(info);
+	resinfo->data = arena_alloc(a, resinfo->data_size);
+	// if we were given data to copy then copy that amount. if that doesnt cover the whole image data then the remainder will be random data
 	if(info.data != zero)
 	{
 		memcopy(resinfo->data, info.data, info.data_size);
 	}
 
+	// if zero_memory was passed then lets make sure we zero the whole thing
 	if(((info.flags) & (gpu_resource_flag.zero_memory)) != zero)
 	{
-		memfill(resinfo->data, 0, info.data_size);
+		memfill(resinfo->data, 0, resinfo->data_size);
 	}
 
-	// write resource data to gpu memory.
-	write_result ::= impl_write_a_resource(resptr, info.data_size, 0);
+	// write resource data to gpu memory. yes the whole thing
+	write_result ::= impl_write_a_resource(resptr, resinfo->data_size, 0);
 	if(write_result.code != zero)
 	{
 		return write_result;
