@@ -26,10 +26,8 @@ ren_mesh_storage ::= struct
 	vertex_cursor : u64;
 	index_buffer : gpu_resource;
 	index_cursor : u64;
-
-	meshes : mesh_locator mut?;
-	meshes_count : u64;
-	meshes_cap : u64;
+	mesh_buffer : gpu_resource;
+	mesh_cursor : u64;
 };
 
 mesh_locator ::= struct

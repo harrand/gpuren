@@ -19,6 +19,14 @@ impl_ren_create_mesh_storage ::= func(info : ren_mesh_storage_info -> ren_mesh_s
 		.buffer_flags := gpu_buffer_flag.index_buffer;
 		.name := "Index Buffer";
 	}, global_arena);
+	mb ::= gpu_create_buffer(gpu_resource_info
+	{
+		.data := zero;
+		.data_size := __sizeof(mesh_locator) * initial_mesh_capacity;
+		.flags := gpu_resource_flag.zero_memory;
+		.buffer_flags := zero;
+		.name := "Mesh Locator Buffer";
+	}, global_arena);
 
 	return ren_mesh_storage
 	{
@@ -27,9 +35,8 @@ impl_ren_create_mesh_storage ::= func(info : ren_mesh_storage_info -> ren_mesh_s
 		.vertex_cursor := 0;
 		.index_buffer := ib.res;
 		.index_cursor := 0;
-		.meshes := arena_alloc(global_arena, __sizeof(mesh_locator) * initial_mesh_capacity);
-		.meshes_count := 0;
-		.meshes_cap := initial_mesh_capacity;
+		.mesh_buffer := mb.res;
+		.mesh_cursor := 0;
 	};
 };
 
@@ -53,14 +60,14 @@ impl_ren_mesh_storage_add ::= func(m : ren_mesh_storage mut?, data : ren_mesh_da
 		.ilen := data.indices_count;
 	};
 
-	// add the mesh_locator to ren_mesh_storage.meshes and return _in_ren_mesh_handle(idx within meshes)
-	idx ::= m->meshes_count;
-	m->meshes_count = (m->meshes_count + 1);
-	deref(m->meshes # idx) = loc;
+	idx ::= m->mesh_cursor;
+	m->mesh_cursor = (m->mesh_cursor + 1);
+	gpu_resize_buffer_at_least(m->mesh_buffer, idx * __sizeof(mesh_locator), global_arena, frame_arena);
 
 	// do the writes
 	gpu_resource_write(m->vertex_buffer, data.vertices, data.vertices_count * ren_mesh_storage_vertex_size(m), voff * ren_mesh_storage_vertex_size(m));
 	gpu_resource_write(m->index_buffer, data.indices, data.indices_count * ren_mesh_storage_index_size(m), ioff * ren_mesh_storage_index_size(m));
+	gpu_resource_write(m->mesh_buffer, ref loc, __sizeof(mesh_locator), idx * __sizeof(mesh_locator));
 	m->vertex_cursor = (m->vertex_cursor + (data.vertices_count));
 	m->index_cursor = (m->index_cursor + (data.indices_count));
 	return _in_ren_mesh_handle(idx);
@@ -79,7 +86,9 @@ impl_ren_mesh_storage_index_size ::= func(m : ren_mesh_storage? -> u64)
 impl_ren_mesh_storage_get_mesh ::= func(m : ren_mesh_storage?, h : ren_mesh_handle -> mesh_locator)
 {
 	idx ::= _out_ren_mesh_handle(h);
-	return deref(m->meshes # idx);
+	ret : mesh_locator mut;
+	gpu_resource_read(m->mesh_buffer, ref ret, __sizeof(mesh_locator), idx * __sizeof(mesh_locator));
+	return ret;
 };
 
 _in_ren_mesh_handle ::= func(idx : u64 -> ren_mesh_handle)

@@ -55,13 +55,12 @@ impl_gpu_resource_write ::= func(res : gpu_resource, data : v0? weak, data_size 
 	resptr ::= (resource.data # (res@s64));
 	rinfo ::= ref (resptr->info);
 
-	memcopy(rinfo->data, data, data_size);
+	memcopy(rinfo->data@u8 mut? # offset, data, data_size);
 	return impl_write_a_resource(resptr, data_size, offset);
 };
 
 impl_gpu_resource_read ::= func(res : gpu_resource, buf : v0? weak, len : u64, offset : u64 -> gpu_err)
 {
-	actual_len : u64 mut := len;
 	recorded_len ::= gpu_resource_size(res);
 	if(offset >= recorded_len)
 	{
@@ -71,22 +70,18 @@ impl_gpu_resource_read ::= func(res : gpu_resource, buf : v0? weak, len : u64, o
 			.msg := "offset was >= the length of the resource";
 		};
 	}
-	if(recorded_len < actual_len)
-	{
-		actual_len = recorded_len;
-	}
 	resptr ::= resource.data # (res@s64);
 	rinfo ::= resptr->info;
 	is_dynamic_buffer ::= (((rinfo.buffer_flags) & (gpu_buffer_flag.dynamic)) != zero) && resptr->is_buffer;
 	if(is_dynamic_buffer)
 	{
-		mapped_ptr ::= (resptr->mapped_ptr)@u8 mut?;
-		memcopy(buf, mapped_ptr # offset, actual_len);
+		mapped_ptr ::= (resptr->mapped_ptr)@u8 mut? # offset;
+		memcopy(buf, mapped_ptr, len);
 	}
 	else
 	{
-		ptr ::= (rinfo.data)@u8 mut?;
-		memcopy(buf, ptr # offset, actual_len);
+		ptr ::= (rinfo.data)@u8 mut? # offset;
+		memcopy(buf, ptr, len);
 	}
 	return zero;
 };
@@ -250,7 +245,7 @@ impl_cpu_gpu_transfer ::= func(dst_gpu_res : u64, dst_gpu_is_buffer : bool, src_
 	}
 	cpumem ::= core.vallocator.buffer_cpu;
 	mapped_ptr ::= (cpumem.mapped_ptr)@u8 mut?;
-	memcopy(mapped_ptr # cursor, src_data, src_data_size);
+	memcopy(mapped_ptr # cursor, src_data # dst_offset, src_data_size);
 
 	aspect_mask : s32 mut := 1; // todo: suport depth.
 	if(is_depth_image)
