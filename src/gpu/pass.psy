@@ -316,7 +316,7 @@ impl_record_compute_work ::= func(passptr : pass_data_t mut?, frame_id : u64 -> 
 	pinfo ::= passptr->info;
 	cinfo ::= pinfo.compute;
 
-	vk.cmd_bind_pipeline(frame.cmds, 0, passptr->pipeline);
+	vk.cmd_bind_pipeline(frame.cmds, 1, passptr->pipeline);
 	vk.cmd_bind_descriptor_sets(frame.cmds, 0, hardware.pipeline_layout, 0, 1, passptr->descriptor_sets # (core.current_frame), 0, zero);
 	vk.cmd_dispatch(frame.cmds, cinfo.kernelx@_, cinfo.kernely@_, cinfo.kernelz@_);
 	return zero;
