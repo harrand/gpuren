@@ -49,7 +49,7 @@ impl_gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph, a : ar
 	cur ::= graphptr->timeline_count;
 	entry_ptr ::= (graphptr->timeline) # cur;
 	(entry_ptr->handle) = (subgraph@s64@_);
-	entry_ptr->is_graph = true;
+	entry_ptr->type = (graph_entry_type.graph);
 	(graphptr->timeline_count) = (graphptr->timeline_count) + 1;
 	
 	// todo: dependencies for subgraphs? probably super cursed and hard
@@ -80,7 +80,43 @@ impl_gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, dependencies : u64
 	cur ::= graphptr->timeline_count;
 	entry_ptr ::= (graphptr->timeline) # cur;
 	(entry_ptr->handle) = (p@s64@_);
-	entry_ptr->is_graph = false;
+	entry_ptr->type = (graph_entry_type.pass);
+	(graphptr->timeline_count) = ((graphptr->timeline_count) + 1);
+
+	deref(graphptr->dependencies # cur) = arena_alloc(a, __sizeof(u64) * dependencies_count);
+	i : u64 mut;
+	for(i = 0, i < dependencies_count, i = i + 1)
+	{
+		deref(deref(graphptr->dependencies # cur) # i) = deref(dependencies # i);
+	}
+	
+	deref(graphptr->dependency_counts # cur) = dependencies_count;
+	return cur;
+};
+
+impl_gpu_graph_add_operation ::= func(g : gpu_graph, o : gpu_operation, dependencies : u64?, dependencies_count : u64, a : arena mut? -> u64)
+{
+	graphptr ::= graph.data # (g@s64);
+	if((graphptr->timeline_count) >= (graphptr->timeline_cap))
+	{
+		olddata ::= graphptr->timeline;
+		oldcap ::= graphptr->timeline_cap;
+		graphptr->timeline_cap = (oldcap * 2);
+		graphptr->timeline = arena_alloc(a, __sizeof(graph_entry) * (graphptr->timeline_cap));
+		memcopy(graphptr->timeline, olddata, __sizeof(graph_entry) * oldcap);
+
+		olddepdata ::= graphptr->dependencies;
+		olddepcountdata ::= graphptr->dependency_counts;
+		// remember we do indeed use oldcap here, not dependencies_count
+		graphptr->dependencies = arena_alloc(a, __sizeof(u64 mut?) * (graphptr->timeline_cap));
+		memcopy(graphptr->dependencies, olddepdata, __sizeof(u64 mut?) * oldcap);
+		graphptr->dependency_counts = arena_alloc(a, __sizeof(u64) * (graphptr->timeline_cap));
+		memcopy(graphptr->dependency_counts, olddepcountdata, __sizeof(u64) * oldcap);
+	}
+	cur ::= graphptr->timeline_count;
+	entry_ptr ::= (graphptr->timeline) # cur;
+	(entry_ptr->handle) = (o@s64@_);
+	entry_ptr->type = (graph_entry_type.operation);
 	(graphptr->timeline_count) = ((graphptr->timeline_count) + 1);
 
 	deref(graphptr->dependencies # cur) = arena_alloc(a, __sizeof(u64) * dependencies_count);
@@ -175,21 +211,26 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 	{
 		cur_entry = deref((graphptr->timeline) # counter);
 		impl_wait_dependencies(graphptr, counter, short);
-		if(cur_entry.is_graph)
+		ty ::= cur_entry.type;
+		if(ty == (graph_entry_type.graph))
 		{
 			ret = impl_record_subgraph_work((cur_entry.handle)@s64@gpu_graph, long, short);
-			if(ret.code != zero)
-			{
-				return ret;
-			}
 		}
 		else
 		{
-			ret = impl_record_gpu_work((cur_entry.handle)@s64@gpu_pass, ref(graphptr->pass_record), core.current_frame, long, short);
-			if(ret.code != zero)
+			if(ty == (graph_entry_type.pass))
 			{
-				return ret;
+				ret = impl_record_gpu_work((cur_entry.handle)@s64@gpu_pass, ref(graphptr->pass_record), core.current_frame, long, short);
 			}
+			else
+			{
+				// must be an operation then
+				ret = impl_record_operation_work((cur_entry.handle)@s64@gpu_operation, core.current_frame);
+			}
+		}
+		if(ret.code != zero)
+		{
+			return ret;
 		}
 		impl_notify_dependencies(graphptr, counter);
 	}
@@ -319,10 +360,17 @@ impl_gpu_wait ::= func(g : gpu_graph -> v0)
 	impl_host_wait_event(graphdata->event, poll_interval_ms);
 };
 
+graph_entry_type ::= enum
+{
+	.pass := 0;
+	.graph := 1;
+	.operation := 2;
+};
+
 graph_entry ::= struct
 {
 	handle : u64 mut;
-	is_graph : bool mut;
+	type : graph_entry_type;
 };
 
 graph_data_t ::= struct
@@ -375,7 +423,7 @@ impl_graph_writes_to_system_image ::= func(g : gpu_graph -> bool)
 	for(counter = 0, counter < count, counter = counter + 1)
 	{
 		cur_entry = deref (graphptr->timeline # counter);
-		if(cur_entry.is_graph)
+		if(cur_entry.type == (graph_entry_type.graph))
 		{
 			if(impl_graph_writes_to_system_image(cur_entry.handle@s64@gpu_graph))
 			{
@@ -384,10 +432,20 @@ impl_graph_writes_to_system_image ::= func(g : gpu_graph -> bool)
 		}
 		else
 		{
-			cur_pass = ((cur_entry.handle)@s64@gpu_pass);
-			if(impl_pass_writes_to_system_image(cur_pass))
+			if(cur_entry.type == (graph_entry_type.pass))
 			{
-				return true;
+				cur_pass = ((cur_entry.handle)@s64@gpu_pass);
+				if(impl_pass_writes_to_system_image(cur_pass))
+				{
+					return true;
+				}
+			}
+			else
+			{
+				if(impl_operation_writes_to_system_image(cur_entry.handle@s64@gpu_operation))
+				{
+					return true;
+				}
 			}
 		}
 	}
@@ -439,7 +497,7 @@ impl_wait_dependencies ::= func(g : graph_data_t mut?, idx : u64, short : arena 
 		depidx ::= deref(deps # (i - skip_count));
 		dep_entry ::= (g->timeline # depidx);
 		handle ::= dep_entry->handle;
-		if(dep_entry->is_graph)
+		if(dep_entry->type == (graph_entry_type.graph))
 		{
 			if(impl_graph_is_real(handle@s64@gpu_graph))
 			{
@@ -453,14 +511,22 @@ impl_wait_dependencies ::= func(g : graph_data_t mut?, idx : u64, short : arena 
 		}
 		else
 		{
-			if(impl_pass_is_real(handle@s64@gpu_pass))
+			if(dep_entry->type == (graph_entry_type.pass))
 			{
-				as_pass ::= deref(pass.data # (handle@s64));
-				deref(event_array # i) = (as_pass.event);
+				if(impl_pass_is_real(handle@s64@gpu_pass))
+				{
+					as_pass ::= deref(pass.data # (handle@s64));
+					deref(event_array # i) = (as_pass.event);
+				}
+				else
+				{
+					skip_count = skip_count + 1;
+				}
 			}
 			else
 			{
-				skip_count = skip_count + 1;
+				as_operation ::= deref(operation.data # (handle@s64));
+				deref(event_array # i) = (as_operation.event);
 			}
 		}
 	}
@@ -480,7 +546,7 @@ impl_notify_dependencies ::= func(g : graph_data_t mut?, idx : u64 -> v0)
 
 	entry ::= (g->timeline # idx);
 	handle ::= entry->handle;
-	if(entry->is_graph)
+	if(entry->type == (graph_entry_type.graph))
 	{
 		if(!impl_graph_is_real(handle@s64@gpu_graph))
 		{
@@ -491,12 +557,20 @@ impl_notify_dependencies ::= func(g : graph_data_t mut?, idx : u64 -> v0)
 	}
 	else
 	{
-		if(!impl_pass_is_real(handle@s64@gpu_pass))
+		if(entry->type == (graph_entry_type.pass))
 		{
-			return;
+			if(!impl_pass_is_real(handle@s64@gpu_pass))
+			{
+				return;
+			}
+			as_pass ::= deref(pass.data # (handle@s64));
+			event = (as_pass.event);
 		}
-		as_pass ::= deref(pass.data # (handle@s64));
-		event = (as_pass.event);
+		else
+		{
+			as_operation ::= deref(operation.data # (handle@s64));
+			event = (as_operation.event);
+		}
 	}
 	frame ::= deref(core.frames # (core.current_frame));
 	VK_PIPELINE_STAGE_ALL_COMMANDS_BIT ::= 0x00010000;

@@ -247,7 +247,7 @@ impl_cpu_gpu_transfer ::= func(dst_gpu_res : u64, dst_gpu_is_buffer : bool, src_
 	mapped_ptr ::= (cpumem.mapped_ptr)@u8 mut?;
 	memcopy(mapped_ptr # cursor, src_data # dst_offset, src_data_size);
 
-	aspect_mask : s32 mut := 1; // todo: suport depth.
+	aspect_mask : s32 mut := 1;
 	if(is_depth_image)
 	{
 		aspect_mask = 2;

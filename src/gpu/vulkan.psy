@@ -869,6 +869,12 @@ VkClearColorValue ::= struct
 	float32 : f32[4];
 };
 
+VkClearDepthStencilValue ::= struct
+{
+	depth : f32;
+	stencil : u32;
+};
+
 // note this is meant to be a union of VkClearColorValue and VkClearDepthStencilValue
 // well we dont support that. VkClearColorValue is the larger of the two so it will just be that.
 VkClearValue ::= struct
@@ -1214,6 +1220,9 @@ vk_functions_t ::= struct
 	cmd_copy_buffer_to_image : func(commandBuffer : u64, srcBuffer : u64, dstImage : u64, dstImageLayout : s32, regionCount : u32, pRegions : VkBufferImageCopy? -> v0);
 	cmd_wait_events : func(commandBuffer : u64, eventCount : u32, pEvents : u64?, srcStageMask : s32, dstStageMask : s32, memoryBarrierCount : u32, pMemoryBarriers : VkMemoryBarrier?, bufferMemoryBarrierCount : u32, pBufferMemoryBarriers : VkBufferMemoryBarrier?, imageMemoryBarrierCount : u32, pImageMemoryBarriers : VkImageMemoryBarrier -> v0);
 	cmd_set_event : func(commandBuffer : u64, event : u64, stageMask : s32 -> v0);
+	cmd_fill_buffer : func(commandBuffer : u64, dstBuffer : u64, dstOffset : u64, size : u64, data : u32 -> v0);
+	cmd_clear_color_image : func(commandBuffer : u64, image : u64, imageLayout : s64, pColor : VkClearColorValue?, rangeCount : u32, pRanges : VkImageSubresourceRange? -> v0);
+	cmd_clear_depth_stencil_image : func(commandBuffer : u64, image : u64, imageLayout : s32, pDepthStencil : VkClearDepthStencilValue?, rangeCount : u32, pRanges : VkImageSubresourceRange? -> v0);
 	cmd_begin_debug_utils_label_ext : func(commandBuffer : u64, pLabelInfo : VkDebugUtilsLabelEXT? -> v0);
 	cmd_end_debug_utils_label_ext : func(commandBuffer : u64 -> v0);
 
@@ -1375,6 +1384,9 @@ vulkan_load_functions ::= func(instance : u64, debug_utils_enabled : bool -> v0)
 	vk.cmd_copy_buffer_to_image = load_vk_fn("vkCmdCopyBufferToImage", instance);
 	vk.cmd_wait_events = load_vk_fn("vkCmdWaitEvents", instance);
 	vk.cmd_set_event = load_vk_fn("vkCmdSetEvent", instance);
+	vk.cmd_fill_buffer = load_vk_fn("vkCmdFillBuffer", instance);
+	vk.cmd_clear_color_image = load_vk_fn("vkCmdClearColorImage", instance);
+	vk.cmd_clear_depth_stencil_image = load_vk_fn("vkCmdClearDepthStencilImage", instance);
 	if(debug_utils_enabled)
 	{
 		vk.cmd_begin_debug_utils_label_ext = load_vk_fn("vkCmdBeginDebugUtilsLabelEXT", instance);
@@ -1489,6 +1501,8 @@ VkResult ::= enum
 // Provided by VK_KHR_pipeline_binary
 	.VK_ERROR_NOT_ENOUGH_SPACE_KHR := -1000483000;
 };
+
+VK_WHOLE_SIZE ::= ~0;
 
 vk_check ::= func(result : s32 -> v0)
 {

@@ -262,6 +262,14 @@ impl_gpu_term ::= func( -> gpu_err)
 		vk.destroy_event(hardware.used_device, graphptr->event, zero);
 	}
 
+	// destroy all operations
+	opptr : operation_data_t mut? mut;
+	for(counter = 0, counter < (operation.count), counter = counter + 1)
+	{
+		opptr = (operation.data # counter);	
+		vk.destroy_event(hardware.used_device, opptr->event, zero);
+	}
+
 	// destroy all passes
 	passptr : pass_data_t mut? mut;
 	for(counter = 0, counter < (pass.count), counter = counter + 1)

@@ -72,6 +72,11 @@ gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, dependencies : u64 mut?
 	return impl_gpu_graph_add_pass(g, p, dependencies, dependencies_count, a);
 };
 
+gpu_graph_add_operation ::= func(g : gpu_graph, o : gpu_operation, dependencies : u64 mut?, dependencies_count : u64, a : arena mut? -> u64)
+{
+	return impl_gpu_graph_add_operation(g, o, dependencies, dependencies_count, a);
+};
+
 // execute the gpu work (async) associated with a graph.
 gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> gpu_err)
 {
@@ -267,6 +272,11 @@ gpu_create_compute_shader ::= func(compute_source : u8?, compute_source_len : u6
 	return impl_gpu_create_compute_shader(compute_source, compute_source_len, a);
 };
 
+gpu_create_operation ::= func(info : gpu_operation_info, a : arena mut? -> gpu_operation_result)
+{
+	return impl_gpu_create_operation(info, a);
+};
+
 // basic information about your application. it is perfectly valid to pass zero if you cba
 gpu_appinfo ::= struct
 {
@@ -397,6 +407,43 @@ gpu_pass ::= enum
 gpu_pass_result ::= struct
 {
 	res : gpu_pass;
+	err : gpu_err;
+};
+
+gpu_operation_code ::= enum
+{
+	.fill_buffer := 0;
+	.fill_image := 1;
+};
+
+gpu_operation_fill_buffer ::= struct
+{
+	dst : gpu_resource;
+	val : u8;
+};
+
+gpu_operation_fill_image ::= struct
+{
+	dst : gpu_resource;
+	colour : f32[3];
+	depth : f32;
+};
+
+gpu_operation_info ::= struct
+{
+	code : gpu_operation_code;
+	fill_buffer : gpu_operation_fill_buffer;
+	fill_image : gpu_operation_fill_image;
+};
+
+gpu_operation ::= enum
+{
+	.invalid := -1;
+};
+
+gpu_operation_result ::= struct
+{
+	res : gpu_operation;
 	err : gpu_err;
 };
 

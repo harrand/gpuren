@@ -1,0 +1,121 @@
+operation : operation_state mut := zero;
+
+operation_state ::= struct
+{
+	data : operation_data_t mut? mut;
+	count : u64 mut;
+	cap : u64 mut;
+};
+
+// internal operation data
+operation_data_t ::= struct
+{
+	info : gpu_operation_info;
+	event : u64;
+};
+
+impl_gpu_create_operation ::= func(info : gpu_operation_info, a : arena mut? -> gpu_operation_result)
+{
+	retid ::= operation.count;
+	opptr ::= impl_alloc_new_operation(a);
+	opptr->info = info;
+	// create event
+	opptr->event = impl_create_empty_event();
+	return gpu_operation_result
+	{
+		.res := retid@gpu_operation;
+		.err := zero;
+	};
+};
+
+impl_alloc_new_operation ::= func(a : arena mut? -> operation_data_t mut?)
+{
+	if(operation.cap == 0)
+	{
+		operation.data = arena_alloc(a, __sizeof(operation_data_t) * 32);
+		operation.cap = 32;
+	}
+	if(operation.count > operation.cap)
+	{
+		putzstr("ran out of operation capacity. todo: fix this.");
+		__debugbreak();
+	}
+	id ::= operation.count;
+	operation.count = (operation.count + 1);
+	return operation.data # id;
+};
+
+impl_record_operation_work ::= func(op : gpu_operation, frame_id : u64 -> gpu_err)
+{
+	frame ::= deref(core.frames # frame_id);
+	opptr ::= operation.data # (op@s64);
+	info ::= opptr->info;
+
+	i : u64 mut;
+	if(info.code == (gpu_operation_code.fill_buffer))
+	{
+		buf_op_data ::= info.fill_buffer;
+		buf ::= resource.data # (buf_op_data.dst@s64);
+		data_4bytes : u32 mut;
+		data_byteptr ::= ref(data_4bytes)@u8 mut?;
+		for(i = 0, i < 4, i = i + 1)
+		{
+			deref(data_byteptr # i) = (buf_op_data.val);
+		}
+		vk.cmd_fill_buffer(frame.cmds, buf->vk_handle, 0, VK_WHOLE_SIZE, data_4bytes);
+		return zero;
+	}
+	if(info.code == (gpu_operation_code.fill_image))
+	{
+		img_op_data ::= info.fill_image;
+		img ::= resource.data # (img_op_data.dst@s64);
+		is_depth ::= img->info.image_type == (gpu_image_type.depth);
+		// should be an image resource
+		// todo: the only valid layouts here are GENERAL and TRANSFER_DST
+		// im gonna stick with transfer_dst and its a hard-requirement of this implementation that the image being filled is in this layout.
+		// if you hit a case where this isnt the case, you will need to either handle transitioning yourself OR ban such images from being used.
+		transfer_dst_optimal ::= 7;
+		aspect_mask : s32 mut := 1;
+		if(is_depth)
+		{
+			aspect_mask = 2;
+		}
+		range ::= VkImageSubresourceRange
+		{
+			.aspectMask := aspect_mask;
+			.baseMipLevel := 0;
+			.levelCount := 1;
+			.baseArrayLayer := 0;
+			.layerCount := 1;
+		};
+		if(is_depth)
+		{
+			d ::= img_op_data.depth;
+			depthclear ::= VkClearDepthStencilValue{.depth := d; .stencil := zero;};
+			vk.cmd_clear_depth_stencil_image(frame.cmds, img->vk_handle, transfer_dst_optimal, ref depthclear, 1, ref range);
+		}
+		else
+		{
+			c ::= img_op_data.colour;
+			colclear ::= VkClearColorValue{.float32 := f32[4]{deref(c # 0); deref(c # 1); deref(c # 2); 0.0;};};
+			vk.cmd_clear_color_image(frame.cmds, img->vk_handle, transfer_dst_optimal, ref colclear, 1, ref range);
+		}
+		
+		return zero;
+	}
+	putzstr("unrecognised gpu_operation_code ");
+	putchar('"');
+	putzstr(__enumname(info.code));
+	putchar('"');
+	putzstr(" (");
+	putsint(info.code@s64);
+	putzstr(")");
+	__debugbreak();
+	return zero;
+};
+
+impl_operation_writes_to_system_image ::= func(op : gpu_operation -> bool)
+{
+	return false;
+};
+
