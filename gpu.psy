@@ -434,6 +434,7 @@ gpu_operation_info ::= struct
 	code : gpu_operation_code;
 	fill_buffer : gpu_operation_fill_buffer;
 	fill_image : gpu_operation_fill_image;
+	name : u8?;
 };
 
 gpu_operation ::= enum

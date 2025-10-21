@@ -51,6 +51,8 @@ impl_record_operation_work ::= func(op : gpu_operation, frame_id : u64 -> gpu_er
 	opptr ::= operation.data # (op@s64);
 	info ::= opptr->info;
 
+	impl_begin_label(frame.cmds, info.name);
+
 	i : u64 mut;
 	if(info.code == (gpu_operation_code.fill_buffer))
 	{
@@ -63,7 +65,6 @@ impl_record_operation_work ::= func(op : gpu_operation, frame_id : u64 -> gpu_er
 			deref(data_byteptr # i) = (buf_op_data.val);
 		}
 		vk.cmd_fill_buffer(frame.cmds, buf->vk_handle, 0, VK_WHOLE_SIZE, data_4bytes);
-		return zero;
 	}
 	if(info.code == (gpu_operation_code.fill_image))
 	{
@@ -100,17 +101,8 @@ impl_record_operation_work ::= func(op : gpu_operation, frame_id : u64 -> gpu_er
 			colclear ::= VkClearColorValue{.float32 := f32[4]{deref(c # 0); deref(c # 1); deref(c # 2); 0.0;};};
 			vk.cmd_clear_color_image(frame.cmds, img->vk_handle, transfer_dst_optimal, ref colclear, 1, ref range);
 		}
-		
-		return zero;
 	}
-	putzstr("unrecognised gpu_operation_code ");
-	putchar('"');
-	putzstr(__enumname(info.code));
-	putchar('"');
-	putzstr(" (");
-	putsint(info.code@s64);
-	putzstr(")");
-	__debugbreak();
+	impl_end_label(frame.cmds);
 	return zero;
 };
 
