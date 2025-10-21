@@ -15,6 +15,7 @@ swapchain_state ::= struct
 	views_cap : u64;
 
 	present_mode : gpu_present_mode;
+	old_present_mode : gpu_present_mode;
 
 	colour_format : s32;
 	depth_format : s32;
@@ -32,7 +33,6 @@ impl_mark_swapchain_dirty ::= func(-> v0)
 impl_gpu_set_present_mode ::= func(present_mode : gpu_present_mode -> v0)
 {
 	swapchain.present_mode = present_mode;
-	impl_mark_swapchain_dirty();
 };
 
 impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> gpu_err)
@@ -63,18 +63,32 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> gpu_err)
 		};
 	};
 
-	if(!(swapchain.dirty))
-	{
-		if(swapchain.width@_ == w)
-		{
-			if(swapchain.height@_ == h)
-			{
-				return zero;
-			}
-		}
-	}
-	swapchain.dirty = false;
+	// we've been asked for a new swapchain. but we could already have done this earlier.
+	// if can_early_out is true, then we don't need to do anything.
 
+	can_early_out : bool mut := true;
+
+	has_dimensions_changed ::= (swapchain.width != w) || (swapchain.height != h);
+	has_present_mode_changed ::= (swapchain.present_mode) != (swapchain.old_present_mode);
+
+	if(has_dimensions_changed || has_present_mode_changed)
+	{
+		// if either of these have changed, we cannot early out.
+		can_early_out = false;
+	}
+
+	if(swapchain.dirty)
+	{
+		// swapchain is marked as dirty - we ignore any cached state and refuse to early out.
+		can_early_out = false;
+	}
+
+	if(can_early_out)
+	{
+		return zero;
+	}
+
+	// ok we're doing this.
 	if(core.wsi.type == (gpu_wsi_type.headless))
 	{
 		// we are headless
@@ -182,85 +196,92 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> gpu_err)
 		}
 	}
 	// do this part for both headless and window
-
-	if(swapchain.system_image != 0)
+	// recreate system images.
+	// this doesn't care about present mode. so if we haven't changed dimensions then we don't need to do this.
+	if(has_dimensions_changed || (swapchain.dirty))
 	{
-		// destroy old system image + view if they already exist. i am not bothering rn.
-		vk.destroy_image_view(hardware.used_device, swapchain.system_image_view, zero);
-		vk.destroy_image(hardware.used_device, swapchain.system_image, zero);
-	}
-	system_image_create ::= VkImageCreateInfo
-	{
-		.sType := 14;
-		.pNext := zero;
-		.flags := 0;
-		.imageType := 1;
-		.format := swapchain.colour_format;
-		.extent := VkExtent3D
+		if(swapchain.system_image != 0)
 		{
-			.width := w@_;
-			.height := h@_;
-			.depth := 1;
-		};
-		.mipLevels := 1;
-		.arrayLayers := 1;
-		.samples := 1;
-		.tiling := 0;
-		.usage := (0x00000010) | (0x00000001); // VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-		.sharingMode := 0;
-		.queueFamilyIndexCount := 1;
-		.pQueueFamilyIndices := ref(hardware.used_qfi);
-		.initialLayout := 0;
-	};
-	vk_check(vk.create_image(hardware.used_device, ref system_image_create, zero, ref(swapchain.system_image)));
-	impl_label_image(hardware.used_device, swapchain.system_image, "System Image");
-	impl_bind_image_mem(swapchain.system_image);
-
-	view_create.image = (swapchain.system_image);
-	view_create.format = (swapchain.colour_format);
-	vk_check(vk.create_image_view(hardware.used_device, ref view_create, zero, ref (swapchain.system_image_view)));
-	impl_label_view(hardware.used_device, swapchain.system_image_view, "System Image View");
-
-	if(swapchain.system_depth_image != 0)
-	{
-		vk.destroy_image_view(hardware.used_device, swapchain.system_depth_image_view, zero);
-		vk.destroy_image(hardware.used_device, swapchain.system_depth_image, zero);
-	}
-	system_depth_image_create ::= VkImageCreateInfo
-	{
-		.sType := 14;
-		.pNext := zero;
-		.flags := 0;
-		.imageType := 1;
-		.format := swapchain.depth_format;
-		.extent := VkExtent3D
+			// destroy old system image + view if they already exist. i am not bothering rn.
+			vk.destroy_image_view(hardware.used_device, swapchain.system_image_view, zero);
+			vk.destroy_image(hardware.used_device, swapchain.system_image, zero);
+		}
+		system_image_create ::= VkImageCreateInfo
 		{
-			.width := w@_;
-			.height := h@_;
-			.depth := 1;
+			.sType := 14;
+			.pNext := zero;
+			.flags := 0;
+			.imageType := 1;
+			.format := swapchain.colour_format;
+			.extent := VkExtent3D
+			{
+				.width := w@_;
+				.height := h@_;
+				.depth := 1;
+			};
+			.mipLevels := 1;
+			.arrayLayers := 1;
+			.samples := 1;
+			.tiling := 0;
+			.usage := (0x00000010) | (0x00000001); // VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+			.sharingMode := 0;
+			.queueFamilyIndexCount := 1;
+			.pQueueFamilyIndices := ref(hardware.used_qfi);
+			.initialLayout := 0;
 		};
-		.mipLevels := 1;
-		.arrayLayers := 1;
-		.samples := 1;
-		.tiling := 0;
-		.usage := (0x00000020) | (0x00000001); // VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-		.sharingMode := 0;
-		.queueFamilyIndexCount := 1;
-		.pQueueFamilyIndices := ref(hardware.used_qfi);
-		.initialLayout := 0;
-	};
-	vk_check(vk.create_image(hardware.used_device, ref system_depth_image_create, zero, ref (swapchain.system_depth_image)));
-	impl_label_image(hardware.used_device, swapchain.system_depth_image, "System Depth Image");
-	impl_bind_image_mem(swapchain.system_depth_image);
+		vk_check(vk.create_image(hardware.used_device, ref system_image_create, zero, ref(swapchain.system_image)));
+		impl_label_image(hardware.used_device, swapchain.system_image, "System Image");
+		impl_bind_image_mem(swapchain.system_image);
 
-	view_create.image = (swapchain.system_depth_image);
-	view_create.format = (swapchain.depth_format);
-	view_create.subresourceRange.aspectMask = 2; // VK_IMAGE_ASPECT_DEPTH_BIT
-	vk_check(vk.create_image_view(hardware.used_device, ref view_create, zero, ref(swapchain.system_depth_image_view)));
-	impl_label_view(hardware.used_device, swapchain.system_depth_image_view, "System Depth Image View");
+		view_create.image = (swapchain.system_image);
+		view_create.format = (swapchain.colour_format);
+		vk_check(vk.create_image_view(hardware.used_device, ref view_create, zero, ref (swapchain.system_image_view)));
+		impl_label_view(hardware.used_device, swapchain.system_image_view, "System Image View");
+
+		if(swapchain.system_depth_image != 0)
+		{
+			vk.destroy_image_view(hardware.used_device, swapchain.system_depth_image_view, zero);
+			vk.destroy_image(hardware.used_device, swapchain.system_depth_image, zero);
+		}
+		system_depth_image_create ::= VkImageCreateInfo
+		{
+			.sType := 14;
+			.pNext := zero;
+			.flags := 0;
+			.imageType := 1;
+			.format := swapchain.depth_format;
+			.extent := VkExtent3D
+			{
+				.width := w@_;
+				.height := h@_;
+				.depth := 1;
+			};
+			.mipLevels := 1;
+			.arrayLayers := 1;
+			.samples := 1;
+			.tiling := 0;
+			.usage := (0x00000020) | (0x00000001); // VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+			.sharingMode := 0;
+			.queueFamilyIndexCount := 1;
+			.pQueueFamilyIndices := ref(hardware.used_qfi);
+			.initialLayout := 0;
+		};
+		vk_check(vk.create_image(hardware.used_device, ref system_depth_image_create, zero, ref (swapchain.system_depth_image)));
+		impl_label_image(hardware.used_device, swapchain.system_depth_image, "System Depth Image");
+		impl_bind_image_mem(swapchain.system_depth_image);
+
+		view_create.image = (swapchain.system_depth_image);
+		view_create.format = (swapchain.depth_format);
+		view_create.subresourceRange.aspectMask = 2; // VK_IMAGE_ASPECT_DEPTH_BIT
+		vk_check(vk.create_image_view(hardware.used_device, ref view_create, zero, ref(swapchain.system_depth_image_view)));
+		impl_label_view(hardware.used_device, swapchain.system_depth_image_view, "System Depth Image View");
+	}
 
 	swapchain.width = w;
 	swapchain.height = h;
+	swapchain.old_present_mode = (swapchain.present_mode);
+	swapchain.dirty = false;
+
 	return zero;
 };
 
