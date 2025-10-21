@@ -8,7 +8,7 @@ impl_ren_create_draw_list ::= func(info : ren_draw_list_info -> ren_draw_list)
 		.data := zero;
 		.data_size := __sizeof(u32) + (__sizeof(gpu_draw_indexed_command) * initial_maximum_draw_count);
 		.flags := gpu_resource_flag.zero_memory;
-		.buffer_flags := gpu_buffer_flag.draw_buffer;
+		.buffer_flags := gpu_buffer_flag.indirect_buffer;
 		.name := "draw buffer";
 	}, global_arena);
 	initial_free_list_cap ::= 64;

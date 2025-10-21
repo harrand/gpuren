@@ -150,11 +150,28 @@ impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : a
 
 	passptr->is_compute = impl_shader_is_compute(info.shader);
 	ginfo ::= info.graphics;
+	cinfo ::= info.compute;
 	cur_colour_target : gpu_resource mut;
 	// create pipeline.
 	if(passptr->is_compute)
 	{
 		passptr->pipeline = impl_create_compute_pipeline(info.shader, info.compute);
+		if((cinfo.kernel_buffer) != (gpu_resource.invalid))
+		{
+			kernbuf ::= resource.data # (cinfo.kernel_buffer@s64);
+			if((kernbuf->info.buffer_flags & (gpu_buffer_flag.indirect_buffer)) == zero)
+			{
+				return gpu_pass_result
+				{
+					.res := gpu_pass.invalid;
+					.err := gpu_err
+					{
+						.code := gpu_err_code.malformed;
+						.msg := "error: kernel buffer of compute renderer did not have gpu_buffer_flag.indirect_buffer";
+					};
+				};
+			}
+		}
 	}
 	else
 	{
@@ -164,7 +181,7 @@ impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : a
 			drawbuf : resource_data_t? := resource.data # drawbuf_handle;
 			dbinfo ::= drawbuf->info;
 			dbflags ::= dbinfo.buffer_flags;
-			if((dbflags & (gpu_buffer_flag.draw_buffer)) == zero)
+			if((dbflags & (gpu_buffer_flag.indirect_buffer)) == zero)
 			{
 				return gpu_pass_result
 				{
@@ -172,7 +189,7 @@ impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : a
 					.err := gpu_err
 					{
 						.code := gpu_err_code.malformed;
-						.msg := "error: draw buffer of graphics renderer did not have gpu_buffer_flag.draw_buffer";
+						.msg := "error: draw buffer of graphics renderer did not have gpu_buffer_flag.indirect_buffer";
 					};
 				};
 			}

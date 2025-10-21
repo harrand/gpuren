@@ -476,8 +476,8 @@ gpu_buffer_flag ::= enum
 	.dynamic := 0b00000001;
 	// buffer can be used as an index buffer.
 	.index_buffer := 0b00000010;
-	// buffer can be used as an indirect draw buffer.
-	.draw_buffer := 0b00000100;
+	// buffer can be used as an indirect draw/compute-kernel buffer.
+	.indirect_buffer := 0b00000100;
 };
 
 gpu_image_flag ::= enum

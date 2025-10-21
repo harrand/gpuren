@@ -411,7 +411,7 @@ impl_init_buffer ::= func(resptr : resource_data_t mut?, info : gpu_resource_inf
 	{
 		create.usage = (create.usage) | 0x00000040;
 	}
-	if(((info.buffer_flags) & (gpu_buffer_flag.draw_buffer)) != zero)
+	if(((info.buffer_flags) & (gpu_buffer_flag.indirect_buffer)) != zero)
 	{
 		create.usage = (create.usage) | 0x00000100;
 	}
