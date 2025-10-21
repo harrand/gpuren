@@ -361,9 +361,8 @@ gpu_graphics_state ::= struct
 
 gpu_compute_state ::= struct
 {
-	kernelx : u32;
-	kernely : u32;
-	kernelz : u32;
+	static_kernel : u32[3];
+	kernel_buffer : gpu_resource;
 };
 
 gpu_hardware_type ::= enum

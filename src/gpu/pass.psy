@@ -314,7 +314,17 @@ impl_record_compute_work ::= func(passptr : pass_data_t mut?, frame_id : u64 -> 
 
 	vk.cmd_bind_pipeline(frame.cmds, 1, passptr->pipeline);
 	vk.cmd_bind_descriptor_sets(frame.cmds, 1, hardware.pipeline_layout, 0, 1, passptr->descriptor_sets # (core.current_frame), 0, zero);
-	vk.cmd_dispatch(frame.cmds, cinfo.kernelx@_, cinfo.kernely@_, cinfo.kernelz@_);
+	kernbuf ::= cinfo.kernel_buffer;
+	if(kernbuf == (gpu_resource.invalid))
+	{
+		kern ::= cinfo.static_kernel;
+		vk.cmd_dispatch(frame.cmds, deref(kern # 0), deref(kern # 1), deref(kern # 2));
+	}
+	else
+	{
+		kernbufres ::= (resource.data # (kernbuf@s64));
+		vk.cmd_dispatch_indirect(frame.cmds, kernbufres->vk_handle, 0);
+	}
 	return zero;
 };
 
