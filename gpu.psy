@@ -346,6 +346,11 @@ gpu_draw_indexed_command ::= struct
 	first_instance : u32;
 };
 
+gpu_dispatch_command ::= struct
+{
+	kernel : u32[3];
+};
+
 gpu_graphics_state ::= struct
 {
 	clear_colour : f32[4];
