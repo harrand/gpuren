@@ -7,11 +7,14 @@ swapchain_state ::= struct
 	handle : u64;
 	width : u64;
 	height : u64;
+	dirty : bool;
 	image_count : u32;
 	images : u64 mut?;
 	images_cap : u64;
 	views : u64 mut?;
 	views_cap : u64;
+
+	present_mode : gpu_present_mode;
 
 	colour_format : s32;
 	depth_format : s32;
@@ -19,6 +22,17 @@ swapchain_state ::= struct
 	system_image_view : u64;
 	system_depth_image : u64;
 	system_depth_image_view : u64;
+};
+
+impl_mark_swapchain_dirty ::= func(-> v0)
+{
+	swapchain.dirty = true;
+};
+
+impl_gpu_set_present_mode ::= func(present_mode : gpu_present_mode -> v0)
+{
+	swapchain.present_mode = present_mode;
+	impl_mark_swapchain_dirty();
 };
 
 impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> gpu_err)
@@ -49,13 +63,17 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> gpu_err)
 		};
 	};
 
-	if(swapchain.width@_ == w)
+	if(!(swapchain.dirty))
 	{
-		if(swapchain.height@_ == h)
+		if(swapchain.width@_ == w)
 		{
-			return zero;
+			if(swapchain.height@_ == h)
+			{
+				return zero;
+			}
 		}
 	}
+	swapchain.dirty = false;
 
 	if(core.wsi.type == (gpu_wsi_type.headless))
 	{
@@ -96,6 +114,17 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> gpu_err)
 		caps : VkSurfaceCapabilitiesKHR mut;
 		vk.get_physical_device_surface_capabilities_khr(hardware.used_hardware, swapchain.surface, ref caps);
 
+		// 0 = immediate. fifo (vsync) = 2
+		vk_present_mode : s32 mut := 0;
+		if(swapchain.present_mode == (gpu_present_mode.immediate))
+		{
+			vk_present_mode = 0;
+		}
+		if(swapchain.present_mode == (gpu_present_mode.vsync))
+		{
+			vk_present_mode = 2;
+		}
+
 		swch_create ::= VkSwapchainCreateInfoKHR
 		{
 			.sType := 1000001000;
@@ -113,8 +142,7 @@ impl_need_swapchain ::= func(w : u64, h : u64, a : arena mut? -> gpu_err)
 			.pQueueFamilyIndices := ref(hardware.used_qfi);
 			.preTransform := caps.currentTransform;
 			.compositeAlpha := 0x00000001;
-			// 0 = immediate. fifo (vsync) = 2
-			.presentMode := 2;
+			.presentMode := vk_present_mode;
 			.clipped := 0;
 			.oldSwapchain := swapchain.handle;
 		};

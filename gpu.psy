@@ -3,6 +3,12 @@
 	add_source_directory("src/gpu");
 }
 
+gpu_present_mode ::= enum
+{
+	.immediate := 0;
+	.vsync := 1;
+};
+
 gpu_wsi_type ::= enum
 {
 	// invalid - default value. psygpu will emit an error if a pass attempts to use gpu_resource.window_resource
@@ -57,14 +63,14 @@ gpu_term ::= func( -> gpu_err)
 	return impl_gpu_term();
 };
 
-gpu_create_graph ::= func(name : u8?, a : arena mut? -> gpu_graph)
+gpu_create_graph ::= func(info : gpu_graph_info, a : arena mut? -> gpu_graph)
 {
-	return impl_gpu_create_graph(name, a);
+	return impl_gpu_create_graph(info, a);
 };
 
-gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph, a : arena mut? -> u64)
+gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph, dependencies : u64?, dependencies_count : u64, a : arena mut? -> u64)
 {
-	return impl_gpu_graph_add_subgraph(g, subgraph, a);
+	return impl_gpu_graph_add_subgraph(g, subgraph, dependencies, dependencies_count, a);
 };
 
 gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, dependencies : u64 mut?, dependencies_count : u64, a : arena mut? -> u64)
@@ -153,6 +159,11 @@ gpu_hardware_select ::= func(hardware_options : gpu_hardware?, hardware_options_
 gpu_use_hardware ::= func(hw : gpu_hardware, wsi : gpu_wsi -> gpu_err)
 {
 	return impl_gpu_use_hardware(hw, wsi);
+};
+
+gpu_set_present_mode ::= func(present_mode : gpu_present_mode -> v0)
+{
+	impl_gpu_set_present_mode(present_mode);
 };
 
 // create either a graphics or compute pass
@@ -383,6 +394,18 @@ gpu_hardware ::= struct
 	native_handle : u64;
 };
 
+gpu_graph_flag ::= enum
+{
+	// at the end of the graphs execution, present the current swapchain image.
+	.present := 1;
+};
+
+gpu_graph_info ::= struct
+{
+	flags : gpu_graph_flag;
+	name : u8?;
+};
+
 gpu_graph ::= enum
 {
 	.invalid := -1;
@@ -401,7 +424,6 @@ gpu_pass_info ::= struct
 gpu_pass ::= enum
 {
 	.invalid := -1;
-	.present := -2;
 };
 
 gpu_pass_result ::= struct

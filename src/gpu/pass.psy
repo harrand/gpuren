@@ -262,10 +262,6 @@ impl_alloc_new_pass ::= func(a : arena mut? -> pass_data_t mut?)
 
 impl_pass_writes_to_system_image ::= func(p : gpu_pass -> bool)
 {
-	if(p == (gpu_pass.present))
-	{
-		return false;
-	}
 	passptr ::= (pass.data # (p@s64));
 	passinfo ::= passptr->info;
 	ginfo ::= passinfo.graphics;
@@ -594,10 +590,6 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, options : pass_gp
 
 impl_record_gpu_work ::= func(p : gpu_pass, options : pass_gpu_work_options mut?, frame_id : u64, long : arena mut?, short : arena mut? -> gpu_err)
 {
-	if(p == (gpu_pass.present))
-	{
-		return zero;
-	}
 	passptr : pass_data_t mut? := pass.data # (p@s64);
 
 	frame ::= deref(core.frames # frame_id);
@@ -645,10 +637,4 @@ impl_create_empty_event ::= func(-> u64)
 	evt : u64 mut;
 	vk.create_event(hardware.used_device, ref create, zero, ref evt);
 	return evt;
-};
-
-// true if pass is an actual real pass created via gpu_create_pass, false if e.g present pass or invalid
-impl_pass_is_real ::= func(g : gpu_pass -> bool)
-{
-	return (g != (gpu_pass.invalid)) && ((g != (gpu_pass.present)));
 };
