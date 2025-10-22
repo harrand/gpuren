@@ -142,7 +142,17 @@ impl_gpu_resize_buffer ::= func(res : gpu_resource, new_size : u64, long : arena
 		return;
 	}
 
+
 	vk.device_wait_idle(hardware.used_device);
+	if(((newinfo.buffer_flags) & (gpu_buffer_flag.dynamic)) != zero)
+	{
+		// this is a dynamic buffer we are resizing.
+		// we want to preserve its data.
+		// well the user has probably written a bunch of stuff into mapped_ptr which isn't reflected in resptr->info.data...
+		// so let's copy it over now.
+		impl_buffer_copy_mapped_ptr_to_data(resptr);
+	}
+
 	vk.destroy_buffer(hardware.used_device, resptr->vk_handle, zero);
 
 	if(new_size > (oldinfo.data_size))
@@ -385,6 +395,17 @@ impl_write_resources ::= func(passptr : pass_data_t mut?, long : arena mut?, sho
 		}
 	}
 	return zero;
+};
+
+impl_buffer_copy_mapped_ptr_to_data ::= func(resptr : resource_data_t mut? -> v0)
+{
+	// mapped_ptr has some data that's uptodate.
+	// the info.data is not. we copy it over.
+	// intended for dynamic buffer resources.
+	mapped_ptr ::= resptr->mapped_ptr;
+	data ::= resptr->info.data;
+	data_size ::= resptr->info.data_size;
+	memcopy(data, mapped_ptr, data_size);
 };
 
 impl_init_buffer ::= func(resptr : resource_data_t mut?, info : gpu_resource_info, a : arena mut? -> gpu_err)
