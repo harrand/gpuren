@@ -93,6 +93,7 @@ impl_gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph, depend
 	entry ::= graphptr->timeline # idx;
 	entry->handle = (g@s64@_);
 	entry->type = (graph_entry_type.subgraph);
+	impl_graph_entry_populate_resource_dependencies(g, idx);
 	return idx;
 };
 
@@ -107,6 +108,7 @@ impl_gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, dependencies : u64
 	entry ::= graphptr->timeline # idx;
 	entry->handle = (p@s64@_);
 	entry->type = (graph_entry_type.pass);
+	impl_graph_entry_populate_resource_dependencies(g, idx);
 	return idx;
 };
 
@@ -121,6 +123,7 @@ impl_gpu_graph_add_operation ::= func(g : gpu_graph, o : gpu_operation, dependen
 	entry ::= graphptr->timeline # idx;
 	entry->handle = (o@s64@_);
 	entry->type = (graph_entry_type.operation);
+	impl_graph_entry_populate_resource_dependencies(g, idx);
 	return idx;
 };
 
@@ -367,10 +370,16 @@ graph_entry ::= struct
 	type : graph_entry_type;
 };
 
+graph_resource_dependency_t ::= struct
+{
+	res : gpu_resource;
+	// todo: useful stuff future harry needs.
+};
+
 graph_dependency_data_t ::= struct
 {
 	idx : u64;
-	resource_dependencies : v0?;
+	resource_dependencies : graph_resource_dependency_t mut?;
 	resource_dependencies_count : u64;
 };
 
@@ -537,4 +546,58 @@ impl_notify_dependencies ::= func(g : graph_data_t mut?, idx : u64 -> v0)
 	frame ::= deref(core.frames # (core.current_frame));
 	VK_PIPELINE_STAGE_ALL_COMMANDS_BIT ::= 0x00010000;
 	vk.cmd_set_event(frame.cmds, event, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+};
+
+impl_graph_entry_populate_resource_dependencies ::= func(g : gpu_graph, idx : u64 -> v0)
+{
+	// idx is the graph whose dependency array needs populating
+	graphptr ::= graph.data # (g@s64);
+	// here's the array and its length
+	deps : graph_dependency_data_t mut? := deref(graphptr->dependencies # idx);
+	deps_count ::= deref(graphptr->dependency_counts # idx);
+	i : u64 mut;
+	for(i = 0, i < deps_count, i = i + 1)
+	{
+		curdep ::= deps # i;
+		// curdep->idx is already set
+		// but its resource_dependencies and resource_dependencies_count need to be sorted out.
+		impl_graph_entry_decipher_dependent_resources(g, idx, curdep->idx, ref(curdep->resource_dependencies), ref(curdep->resource_dependencies_count));
+	}
+};
+
+impl_graph_entry_decipher_dependent_resources ::= func(g : gpu_graph, our_idx : u64, dep_idx : u64, out_resdeps : graph_resource_dependency_t mut? mut?, out_resdeps_count : u64 mut? -> v0)
+{
+	graphptr ::= graph.data # (g@s64);
+
+	us ::= graphptr->timeline # our_idx;
+	them ::= graphptr->timeline # dep_idx;
+
+	// so 'us' depends on 'them'
+	// example: 'them' is a compute pass that writes to a buffer
+	// 'us' is a graphics pass that uses that buffer as draw-indirect-count.
+	// that means out_resdeps should contain an entry that specifies that the buffer needs a memory barrier:
+	//	- compute shader in 'them' sets up a write-via-dispatch
+	//	- vertex shader in 'us' needs that write to be resident by the time the indirect command reads it
+	// so the vulkan-side memory barrier might look like:
+	// VkBufferMemoryBarrier barrier{
+    // VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+    // nullptr,
+    // VK_ACCESS_SHADER_WRITE_BIT,             // src access (compute shader write)
+    // VK_ACCESS_INDIRECT_COMMAND_READ_BIT,    // dst access (indirect read)
+    // VK_QUEUE_FAMILY_IGNORED,
+    // VK_QUEUE_FAMILY_IGNORED,
+    // that_buffer.vk_handle,
+    // 0,
+    // VK_WHOLE_SIZE
+	// };
+
+	// you will need to add data members to graph_resource_dependency_t to contain all this necessary information
+	// ive only added the res gpu resource for now because thats obvious.
+	// then then fill an array of em here into output variables.
+	// good luck lmao
+
+	// i reckon this will be alot of code because 'us' and 'them' can be either a subgraph, pass or operation... ugh...
+	// good luck darling
+	deref(out_resdeps) = zero;
+	deref(out_resdeps_count) = zero;
 };
