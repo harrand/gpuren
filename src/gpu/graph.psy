@@ -33,14 +33,12 @@ impl_gpu_create_graph ::= func(info : gpu_graph_info, a : arena mut? -> gpu_grap
 	return ret@gpu_graph;
 };
 
-impl_gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph, dependencies : u64?, dependencies_count : u64, a : arena mut? -> u64)
+impl_graph_add_empty_element ::= func(g : gpu_graph, dependencies : u64?, dependencies_count : u64, a : arena mut? -> u64)
 {
-	if(subgraph == (gpu_graph.invalid))
-	{
-		putzstr("fatal error: passed gpu_graph.invalid to gpu_graph_add_subgraph");
-	}
 	graphptr ::= graph.data # (g@s64);
-	if((graphptr->timeline_count) >= (graphptr->timeline_cap))
+	// create a new entry in the graph
+	// make sure there's space for it
+	while((graphptr->timeline_count) >= (graphptr->timeline_cap))
 	{
 		olddata ::= graphptr->timeline;
 		oldcap ::= graphptr->timeline_cap;
@@ -56,21 +54,46 @@ impl_gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph, depend
 		graphptr->dependency_counts = arena_alloc(a, __sizeof(u64) * (graphptr->timeline_cap));
 		memcopy(graphptr->dependency_counts, olddepcountdata, __sizeof(u64) * oldcap);
 	}
-	cur ::= graphptr->timeline_count;
-	entry_ptr ::= (graphptr->timeline) # cur;
-	(entry_ptr->handle) = (subgraph@s64@_);
-	entry_ptr->type = (graph_entry_type.graph);
+	// this is the index of the new entry (pass/subgraph/operation i dont care here)
+	idx ::= graphptr->timeline_count;
 	(graphptr->timeline_count) = (graphptr->timeline_count) + 1;
-	
-	deref(graphptr->dependencies # cur) = arena_alloc(a, __sizeof(u64) * dependencies_count);
+
+	// i know how many dependencies this new entry has
+	// and i know which other entries we depend on
+	// so i have enough information to create the execution dependency
+	// so i can create the dependency array and populate the indices
+	// but i will leave the resource dependencies zerod out.
+	deps_array : graph_dependency_data_t mut? := arena_alloc(a, __sizeof(graph_dependency_data_t) * dependencies_count);
 	i : u64 mut;
 	for(i = 0, i < dependencies_count, i = i + 1)
 	{
-		deref(deref(graphptr->dependencies # cur) # i) = deref(dependencies # i);
+		deref(deps_array # i) = graph_dependency_data_t
+		{
+			.idx := deref(dependencies # i);
+			// i dont know these right now i will sort that later.
+			.resource_dependencies := zero;
+			.resource_dependencies_count := zero;
+		};
 	}
-	
-	deref(graphptr->dependency_counts # cur) = dependencies_count;
-	return cur;
+
+	deref(graphptr->dependencies # idx) = deps_array;
+	deref(graphptr->dependency_counts # idx) = dependencies_count;
+
+	return idx;
+};
+
+impl_gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph, dependencies : u64?, dependencies_count : u64, a : arena mut? -> u64)
+{
+	if(subgraph == (gpu_graph.invalid))
+	{
+		putzstr("fatal error: passed gpu_graph.invalid to gpu_graph_add_subgraph");
+	}
+	graphptr ::= graph.data # (g@s64);
+	idx ::= impl_graph_add_empty_element(g, dependencies, dependencies_count, a);
+	entry ::= graphptr->timeline # idx;
+	entry->handle = (g@s64@_);
+	entry->type = (graph_entry_type.subgraph);
+	return idx;
 };
 
 impl_gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, dependencies : u64?, dependencies_count : u64, a : arena mut? -> u64)
@@ -80,73 +103,25 @@ impl_gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, dependencies : u64
 		putzstr("fatal error: passed gpu_pass.invalid to gpu_graph_add_pass");
 	}
 	graphptr ::= graph.data # (g@s64);
-	if((graphptr->timeline_count) >= (graphptr->timeline_cap))
-	{
-		olddata ::= graphptr->timeline;
-		oldcap ::= graphptr->timeline_cap;
-		graphptr->timeline_cap = (oldcap * 2);
-		graphptr->timeline = arena_alloc(a, __sizeof(graph_entry) * (graphptr->timeline_cap));
-		memcopy(graphptr->timeline, olddata, __sizeof(graph_entry) * oldcap);
-
-		olddepdata ::= graphptr->dependencies;
-		olddepcountdata ::= graphptr->dependency_counts;
-		// remember we do indeed use oldcap here, not dependencies_count
-		graphptr->dependencies = arena_alloc(a, __sizeof(u64 mut?) * (graphptr->timeline_cap));
-		memcopy(graphptr->dependencies, olddepdata, __sizeof(u64 mut?) * oldcap);
-		graphptr->dependency_counts = arena_alloc(a, __sizeof(u64) * (graphptr->timeline_cap));
-		memcopy(graphptr->dependency_counts, olddepcountdata, __sizeof(u64) * oldcap);
-	}
-	cur ::= graphptr->timeline_count;
-	entry_ptr ::= (graphptr->timeline) # cur;
-	(entry_ptr->handle) = (p@s64@_);
-	entry_ptr->type = (graph_entry_type.pass);
-	(graphptr->timeline_count) = ((graphptr->timeline_count) + 1);
-
-	deref(graphptr->dependencies # cur) = arena_alloc(a, __sizeof(u64) * dependencies_count);
-	i : u64 mut;
-	for(i = 0, i < dependencies_count, i = i + 1)
-	{
-		deref(deref(graphptr->dependencies # cur) # i) = deref(dependencies # i);
-	}
-	
-	deref(graphptr->dependency_counts # cur) = dependencies_count;
-	return cur;
+	idx ::= impl_graph_add_empty_element(g, dependencies, dependencies_count, a);
+	entry ::= graphptr->timeline # idx;
+	entry->handle = (p@s64@_);
+	entry->type = (graph_entry_type.pass);
+	return idx;
 };
 
 impl_gpu_graph_add_operation ::= func(g : gpu_graph, o : gpu_operation, dependencies : u64?, dependencies_count : u64, a : arena mut? -> u64)
 {
-	graphptr ::= graph.data # (g@s64);
-	if((graphptr->timeline_count) >= (graphptr->timeline_cap))
+	if(o == (gpu_operation.invalid))
 	{
-		olddata ::= graphptr->timeline;
-		oldcap ::= graphptr->timeline_cap;
-		graphptr->timeline_cap = (oldcap * 2);
-		graphptr->timeline = arena_alloc(a, __sizeof(graph_entry) * (graphptr->timeline_cap));
-		memcopy(graphptr->timeline, olddata, __sizeof(graph_entry) * oldcap);
-
-		olddepdata ::= graphptr->dependencies;
-		olddepcountdata ::= graphptr->dependency_counts;
-		// remember we do indeed use oldcap here, not dependencies_count
-		graphptr->dependencies = arena_alloc(a, __sizeof(u64 mut?) * (graphptr->timeline_cap));
-		memcopy(graphptr->dependencies, olddepdata, __sizeof(u64 mut?) * oldcap);
-		graphptr->dependency_counts = arena_alloc(a, __sizeof(u64) * (graphptr->timeline_cap));
-		memcopy(graphptr->dependency_counts, olddepcountdata, __sizeof(u64) * oldcap);
+		putzstr("fatal error: passed gpu_operation.invalid to gpu_graph_add_operation");
 	}
-	cur ::= graphptr->timeline_count;
-	entry_ptr ::= (graphptr->timeline) # cur;
-	(entry_ptr->handle) = (o@s64@_);
-	entry_ptr->type = (graph_entry_type.operation);
-	(graphptr->timeline_count) = ((graphptr->timeline_count) + 1);
-
-	deref(graphptr->dependencies # cur) = arena_alloc(a, __sizeof(u64) * dependencies_count);
-	i : u64 mut;
-	for(i = 0, i < dependencies_count, i = i + 1)
-	{
-		deref(deref(graphptr->dependencies # cur) # i) = deref(dependencies # i);
-	}
-	
-	deref(graphptr->dependency_counts # cur) = dependencies_count;
-	return cur;
+	graphptr ::= graph.data # (o@s64);
+	idx ::= impl_graph_add_empty_element(g, dependencies, dependencies_count, a);
+	entry ::= graphptr->timeline # idx;
+	entry->handle = (o@s64@_);
+	entry->type = (graph_entry_type.operation);
+	return idx;
 };
 
 impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> gpu_err)
@@ -231,7 +206,7 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 		cur_entry = deref((graphptr->timeline) # counter);
 		impl_wait_dependencies(graphptr, counter, short);
 		ty ::= cur_entry.type;
-		if(ty == (graph_entry_type.graph))
+		if(ty == (graph_entry_type.subgraph))
 		{
 			ret = impl_record_subgraph_work((cur_entry.handle)@s64@gpu_graph, long, short);
 		}
@@ -382,7 +357,7 @@ impl_gpu_wait ::= func(g : gpu_graph -> v0)
 graph_entry_type ::= enum
 {
 	.pass := 0;
-	.graph := 1;
+	.subgraph := 1;
 	.operation := 2;
 };
 
@@ -392,13 +367,20 @@ graph_entry ::= struct
 	type : graph_entry_type;
 };
 
+graph_dependency_data_t ::= struct
+{
+	idx : u64;
+	resource_dependencies : v0?;
+	resource_dependencies_count : u64;
+};
+
 graph_data_t ::= struct
 {
 	info : gpu_graph_info;
 	timeline : graph_entry mut?;
 	timeline_count : u64;
 	timeline_cap : u64;
-	dependencies : u64 mut? mut?;
+	dependencies : graph_dependency_data_t mut? mut?;
 	dependency_counts : u64 mut?;
 	event : u64;
 
@@ -430,7 +412,7 @@ impl_graph_writes_to_system_image ::= func(g : gpu_graph -> bool)
 	for(counter = 0, counter < count, counter = counter + 1)
 	{
 		cur_entry = deref (graphptr->timeline # counter);
-		if(cur_entry.type == (graph_entry_type.graph))
+		if(cur_entry.type == (graph_entry_type.subgraph))
 		{
 			if(impl_graph_writes_to_system_image(cur_entry.handle@s64@gpu_graph))
 			{
@@ -496,10 +478,10 @@ impl_wait_dependencies ::= func(g : graph_data_t mut?, idx : u64, short : arena 
 	i : u64 mut;
 	for(i = 0, i < deps_count, i = i + 1)
 	{
-		depidx ::= deref(deps # i);
-		dep_entry ::= (g->timeline # depidx);
+		dep ::= deref(deps # i);
+		dep_entry ::= (g->timeline # (dep.idx));
 		handle ::= dep_entry->handle;
-		if(dep_entry->type == (graph_entry_type.graph))
+		if(dep_entry->type == (graph_entry_type.subgraph))
 		{
 			as_graph ::= deref(graph.data # (handle@s64));
 			deref(event_array # i) = (as_graph.event);
@@ -534,7 +516,7 @@ impl_notify_dependencies ::= func(g : graph_data_t mut?, idx : u64 -> v0)
 
 	entry ::= (g->timeline # idx);
 	handle ::= entry->handle;
-	if(entry->type == (graph_entry_type.graph))
+	if(entry->type == (graph_entry_type.subgraph))
 	{
 		as_graph ::= deref(graph.data # (handle@s64));
 		event = (as_graph.event);
