@@ -93,7 +93,7 @@ impl_gpu_graph_add_subgraph ::= func(g : gpu_graph, subgraph : gpu_graph, depend
 	entry ::= graphptr->timeline # idx;
 	entry->handle = (g@s64@_);
 	entry->type = (graph_entry_type.subgraph);
-	impl_graph_entry_populate_resource_dependencies(g, idx);
+	impl_graph_entry_populate_resource_dependencies(g, idx, a);
 	return idx;
 };
 
@@ -108,7 +108,7 @@ impl_gpu_graph_add_pass ::= func(g : gpu_graph, p : gpu_pass, dependencies : u64
 	entry ::= graphptr->timeline # idx;
 	entry->handle = (p@s64@_);
 	entry->type = (graph_entry_type.pass);
-	impl_graph_entry_populate_resource_dependencies(g, idx);
+	impl_graph_entry_populate_resource_dependencies(g, idx, a);
 	return idx;
 };
 
@@ -123,7 +123,7 @@ impl_gpu_graph_add_operation ::= func(g : gpu_graph, o : gpu_operation, dependen
 	entry ::= graphptr->timeline # idx;
 	entry->handle = (o@s64@_);
 	entry->type = (graph_entry_type.operation);
-	impl_graph_entry_populate_resource_dependencies(g, idx);
+	impl_graph_entry_populate_resource_dependencies(g, idx, a);
 	return idx;
 };
 
@@ -542,7 +542,7 @@ impl_notify_dependencies ::= func(g : graph_data_t mut?, idx : u64 -> v0)
 	vk.cmd_set_event(frame.cmds, event, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
 };
 
-impl_graph_entry_populate_resource_dependencies ::= func(g : gpu_graph, idx : u64 -> v0)
+impl_graph_entry_populate_resource_dependencies ::= func(g : gpu_graph, idx : u64, a : arena mut? -> v0)
 {
 	// idx is the graph whose dependency array needs populating
 	graphptr ::= graph.data # (g@s64);
@@ -555,11 +555,11 @@ impl_graph_entry_populate_resource_dependencies ::= func(g : gpu_graph, idx : u6
 		curdep ::= deps # i;
 		// curdep->idx is already set
 		// but its resource_dependencies and resource_dependencies_count need to be sorted out.
-		impl_graph_entry_decipher_dependent_resources(g, idx, curdep->idx, ref(curdep->resource_dependencies), ref(curdep->resource_dependencies_count));
+		impl_graph_entry_decipher_dependent_resources(g, idx, curdep->idx, ref(curdep->resource_dependencies), ref(curdep->resource_dependencies_count), a);
 	}
 };
 
-impl_graph_entry_decipher_dependent_resources ::= func(g : gpu_graph, our_idx : u64, dep_idx : u64, out_resdeps : resource_dependency mut? mut?, out_resdeps_count : u64 mut? -> v0)
+impl_graph_entry_decipher_dependent_resources ::= func(g : gpu_graph, our_idx : u64, dep_idx : u64, out_resdeps : resource_dependency mut? mut?, out_resdeps_count : u64 mut?, a : arena mut? -> v0)
 {
 	graphptr ::= graph.data # (g@s64);
 
@@ -592,6 +592,89 @@ impl_graph_entry_decipher_dependent_resources ::= func(g : gpu_graph, our_idx : 
 
 	// i reckon this will be alot of code because 'us' and 'them' can be either a subgraph, pass or operation... ugh...
 	// good luck darling
-	deref(out_resdeps) = zero;
-	deref(out_resdeps_count) = zero;
+	union_resources : gpu_resource mut? mut := zero;
+	union_resources_count : u64 mut := zero;
+	union_resources_count = (union_resources_count + impl_graph_entry_append_used_resources(deref(us), ref(union_resources), union_resources_count, a));
+	union_resources_count = (union_resources_count + impl_graph_entry_append_used_resources(deref(them), ref(union_resources), union_resources_count, a));
+	i : u64 mut;
+
+	// allocate enough resdeps for all of these resources (even though its unlikely we use them all)
+	resdep_buffer : resource_dependency mut? := arena_alloc(a, __sizeof(resource_dependency) * union_resources_count);
+	resdep_count : u64 mut := zero;
+
+	for(i = 0, i < union_resources_count, i = i + 1)
+	{
+		// get the resources-accesses from 'us' and 'them' for each resource
+		// if both have a nonzero access then its a resource dependency!
+		curres ::= deref(union_resources # i);
+		
+		// dst = us
+		dst_access : resource_access mut := zero;
+		if(us->type == (graph_entry_type.pass))
+		{
+			dst_access = get_resource_access_from_pass(us->handle@gpu_pass, curres);
+		}
+		if(us->type == (graph_entry_type.subgraph))
+		{
+			dst_access = get_resource_access_from_graph(us->handle@gpu_graph, curres);
+		}
+		if(us->type == (graph_entry_type.operation))
+		{
+			dst_access = get_resource_access_from_operation(us->handle@gpu_operation, curres);
+		}
+
+		// src = them
+		src_access : resource_access mut := zero;
+		if(them->type == (graph_entry_type.pass))
+		{
+			src_access = get_resource_access_from_pass(them->handle@gpu_pass, curres);
+		}
+		if(them->type == (graph_entry_type.subgraph))
+		{
+			src_access = get_resource_access_from_graph(them->handle@gpu_graph, curres);
+		}
+		if(them->type == (graph_entry_type.operation))
+		{
+			src_access = get_resource_access_from_operation(them->handle@gpu_operation, curres);
+		}
+
+		if((src_access != zero) && (dst_access != zero))
+		{
+			// wow we have one!
+			deref(resdep_buffer # resdep_count) = resource_dependency
+			{
+				.res := curres;
+				.src := src_access;
+				.dst := dst_access;
+			};
+			resdep_count = resdep_count + 1;
+		}
+
+	}
+	deref(out_resdeps) = resdep_buffer;
+	deref(out_resdeps_count) = resdep_count;
+};
+
+impl_graph_entry_append_used_resources ::= func(entry : graph_entry, resources : gpu_resource mut?? mut, resources_count : u64, a : arena mut? -> u64)
+{
+	if(entry.type == (graph_entry_type.pass))
+	{
+		return impl_pass_append_used_resources(entry.handle@gpu_pass, resources, resources_count, a);
+	}
+	if(entry.type == (graph_entry_type.subgraph))
+	{
+		return impl_graph_append_used_resources(entry.handle@gpu_graph, resources, resources_count, a);
+	}
+	if(entry.type == (graph_entry_type.operation))
+	{
+		return impl_operation_append_used_resources(entry.handle@gpu_operation, resources, resources_count, a);
+	}
+	putzstr("unsupported graph_entry type");
+	__debugbreak();
+	return zero;
+};
+
+impl_graph_append_used_resources ::= func(g : gpu_graph, resources : gpu_resource mut?? mut, resources_count : u64, a : arena mut? -> u64)
+{
+	return zero;
 };

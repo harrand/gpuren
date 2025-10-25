@@ -652,6 +652,153 @@ impl_pass_uses_resource ::= func(p : gpu_pass, res : gpu_resource -> bool)
 	return false;
 };
 
+// note: this includes draw buffers etc...
+impl_pass_append_used_resources ::= func(p : gpu_pass, resources : gpu_resource mut? mut?, resources_count : u64, a : arena mut? -> u64)
+{
+	read_ptr ::= deref(resources);
+	i : u64 mut;
+	j : u64 mut;
+	k : u64 mut;
+
+	passptr ::= pass.data # (p@s64);
+	info ::= passptr->info;
+
+	// stack allocate enough space for all our resources (just incase we need to add them all)
+	max_new_resource_count : u64 mut := info.resources_count;
+	if(passptr->is_compute)
+	{
+		// kernel buffer
+		max_new_resource_count = (max_new_resource_count + 1);
+	}
+	else
+	{
+		// colour targets count + depth buffer + index buffer + draw buffer
+		max_new_resource_count = (max_new_resource_count + (info.graphics.colour_targets_count) + 3);
+	}
+
+	new_resource_count : u64 mut := 0;
+	new_resources : gpu_resource mut? := __stack_push(__sizeof(gpu_resource) * max_new_resource_count);
+	contained : bool mut;
+	
+	// go through everything. start with resources
+	for(i = 0, i < (info.resources_count), i = i + 1)
+	{
+		curres ::= deref(info.resources_data # i);
+		contained = false;
+		for(j = 0, j < resources_count, j = j + 1)
+		{
+			if(deref(read_ptr # j) == curres)
+			{
+				contained = true;
+			}
+		}
+		if(!contained)
+		{
+			// yes this is a new resource
+			deref(new_resources # new_resource_count) = curres;
+			new_resource_count = new_resource_count + 1;
+		}
+	}
+
+	// now the graphics/compute specific bits.
+	if(passptr->is_compute)
+	{
+		if(info.compute.kernel_buffer != (gpu_resource.invalid))
+		{
+			contained = false;
+			for(j = 0, j < resources_count, j = j + 1)
+			{
+				if(info.compute.kernel_buffer == deref(read_ptr # j))
+				{
+					contained = true;
+				}
+			}
+			if(!contained)
+			{
+				deref(new_resources # new_resource_count) = (info.compute.kernel_buffer);
+				new_resource_count = new_resource_count + 1;
+			}
+		}
+	}
+	else
+	{
+		if(info.graphics.depth_target != (gpu_resource.invalid))
+		{
+			contained = false;
+			for(j = 0, j < resources_count, j = j + 1)
+			{
+				if(info.graphics.depth_target == deref(read_ptr # j))
+				{
+					contained = true;
+				}
+			}
+			if(!contained)
+			{
+				deref(new_resources # new_resource_count) = (info.graphics.depth_target);
+				new_resource_count = new_resource_count + 1;
+			}
+		}
+
+		if(info.graphics.index_buffer != (gpu_resource.invalid))
+		{
+			contained = false;
+			for(j = 0, j < resources_count, j = j + 1)
+			{
+				if(info.graphics.index_buffer == deref(read_ptr # j))
+				{
+					contained = true;
+				}
+			}
+			if(!contained)
+			{
+				deref(new_resources # new_resource_count) = (info.graphics.index_buffer);
+				new_resource_count = new_resource_count + 1;
+			}
+		}
+
+		if(info.graphics.draw_buffer != (gpu_resource.invalid))
+		{
+			contained = false;
+			for(j = 0, j < resources_count, j = j + 1)
+			{
+				if(info.graphics.draw_buffer == deref(read_ptr # j))
+				{
+					contained = true;
+				}
+			}
+			if(!contained)
+			{
+				deref(new_resources # new_resource_count) = (info.graphics.draw_buffer);
+				new_resource_count = new_resource_count + 1;
+			}
+		}
+
+		for(i = 0, i < (info.graphics.colour_targets_count), i = i + 1)
+		{
+			coltar ::= deref(info.graphics.colour_targets_data # i);
+			contained = false;
+			for(j = 0, j < resources_count, j = j + 1)
+			{
+				if(coltar == deref(read_ptr # j))
+				{
+					contained = true;
+				}
+			}
+			if(!contained)
+			{
+				deref(new_resources # new_resource_count) = coltar;
+				new_resource_count = new_resource_count + 1;
+			}
+		}
+	}
+
+	write_ptr : gpu_resource mut? := arena_alloc(a, resources_count + (new_resource_count * __sizeof(gpu_resource)));
+	memcopy(write_ptr, read_ptr, resources_count * __sizeof(gpu_resource));
+	memcopy(write_ptr # resources_count, new_resources, new_resource_count * __sizeof(gpu_resource));
+	deref(resources) = write_ptr;
+	return new_resource_count;
+};
+
 impl_create_empty_event ::= func(-> u64)
 {
 	create ::= VkEventCreateInfo

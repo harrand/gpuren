@@ -111,3 +111,45 @@ impl_operation_writes_to_system_image ::= func(op : gpu_operation -> bool)
 	return false;
 };
 
+impl_operation_append_used_resources ::= func(o : gpu_operation, resources : gpu_resource mut?? mut, resources_count : u64, a : arena mut? -> u64)
+{
+	read_ptr ::= deref(resources);
+	i : u64 mut;
+
+	info ::= (operation.data # (o@s64))->info;
+	target_res : gpu_resource mut := gpu_resource.invalid;
+	if(info.code == (gpu_operation_code.fill_buffer))
+	{
+		target_res = (info.fill_buffer.dst);
+	}
+	if(info.code == (gpu_operation_code.fill_image))
+	{
+		target_res = (info.fill_image.dst);
+	}
+	if(target_res == (gpu_resource.invalid))
+	{
+		putzstr("bug report: impl_operation_append_used_resources didnt seem to use any resources at all. right now i assume all operations use at least one resource.");
+		__debugbreak();
+	}
+
+	res_in_list : bool mut := false;
+	for(i = 0, i < resources_count, i = i + 1)
+	{
+		r ::= deref(read_ptr # i);
+		if(r == target_res)
+		{
+			res_in_list = true;
+		}
+	}
+
+	if(res_in_list)
+	{
+		return 0;
+	}
+	
+	write_ptr : gpu_resource mut? := arena_alloc(a, __sizeof(gpu_resource) * (resources_count + 1));
+	memcopy(write_ptr, read_ptr, __sizeof(gpu_resource) * resources_count);
+	deref(write_ptr # resources_count) = target_res;
+	return 1;
+};
+
