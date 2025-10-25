@@ -1219,7 +1219,7 @@ vk_functions_t ::= struct
 	cmd_draw_indexed_indirect_count : func(commandBuffer : u64, buffer : u64, offset : u64, countBuffer : u64, countBufferOffset : u64, maxDrawCount : u32, stride : u32 -> v0);
 	cmd_copy_buffer : func(commandBuffer : u64, srcBuffer : u64, dstBuffer : u64, regionCount : u32, pRegions : VkBufferCopy? -> v0);
 	cmd_copy_buffer_to_image : func(commandBuffer : u64, srcBuffer : u64, dstImage : u64, dstImageLayout : s32, regionCount : u32, pRegions : VkBufferImageCopy? -> v0);
-	cmd_wait_events : func(commandBuffer : u64, eventCount : u32, pEvents : u64?, srcStageMask : s32, dstStageMask : s32, memoryBarrierCount : u32, pMemoryBarriers : VkMemoryBarrier?, bufferMemoryBarrierCount : u32, pBufferMemoryBarriers : VkBufferMemoryBarrier?, imageMemoryBarrierCount : u32, pImageMemoryBarriers : VkImageMemoryBarrier -> v0);
+	cmd_wait_events : func(commandBuffer : u64, eventCount : u32, pEvents : u64?, srcStageMask : s32, dstStageMask : s32, memoryBarrierCount : u32, pMemoryBarriers : VkMemoryBarrier?, bufferMemoryBarrierCount : u32, pBufferMemoryBarriers : VkBufferMemoryBarrier?, imageMemoryBarrierCount : u32, pImageMemoryBarriers : VkImageMemoryBarrier? -> v0);
 	cmd_set_event : func(commandBuffer : u64, event : u64, stageMask : s32 -> v0);
 	cmd_fill_buffer : func(commandBuffer : u64, dstBuffer : u64, dstOffset : u64, size : u64, data : u32 -> v0);
 	cmd_clear_color_image : func(commandBuffer : u64, image : u64, imageLayout : s64, pColor : VkClearColorValue?, rangeCount : u32, pRanges : VkImageSubresourceRange? -> v0);
