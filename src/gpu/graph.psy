@@ -207,17 +207,17 @@ impl_gpu_execute ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -
 	for(counter = 0, counter < (graphptr->timeline_count), counter = counter + 1)
 	{
 		cur_entry = deref((graphptr->timeline) # counter);
-		impl_wait_dependencies(graphptr, counter, short);
+		impl_wait_dependencies(graphptr, counter);
 		ty ::= cur_entry.type;
 		if(ty == (graph_entry_type.subgraph))
 		{
-			ret = impl_record_subgraph_work((cur_entry.handle)@s64@gpu_graph, long, short);
+			ret = impl_record_subgraph_work((cur_entry.handle)@s64@gpu_graph, long);
 		}
 		else
 		{
 			if(ty == (graph_entry_type.pass))
 			{
-				ret = impl_record_gpu_work((cur_entry.handle)@s64@gpu_pass, ref(graphptr->pass_record), core.current_frame, long, short);
+				ret = impl_record_gpu_work((cur_entry.handle)@s64@gpu_pass, ref(graphptr->pass_record), core.current_frame, long);
 			}
 			else
 			{
@@ -461,12 +461,12 @@ impl_alloc_new_graph ::= func(a : arena mut? -> graph_data_t mut?)
 	return graph.data # id;
 };
 
-impl_record_subgraph_work ::= func(g : gpu_graph, long : arena mut?, short : arena mut? -> gpu_err)
+impl_record_subgraph_work ::= func(g : gpu_graph, long : arena mut? -> gpu_err)
 {
 	return gpu_err{.code := gpu_err_code.unknown; .msg := "subgraphs are nyi";};
 };
 
-impl_wait_dependencies ::= func(g : graph_data_t mut?, idx : u64, short : arena mut? -> v0)
+impl_wait_dependencies ::= func(g : graph_data_t mut?, idx : u64 -> v0)
 {
 	my_entry ::= (g->timeline # idx);
 	my_handle ::= my_entry->handle;
@@ -475,7 +475,7 @@ impl_wait_dependencies ::= func(g : graph_data_t mut?, idx : u64, short : arena 
 	deps_count ::= deref(g->dependency_counts # idx);
 
 	// make an array to store all the events we're gonna wait on
-	event_array : u64 mut? := arena_alloc(short, __sizeof(u64) * deps_count);
+	event_array : u64 mut? := __stack_push(deps_count * __sizeof(u64));
 
 	// populate event_array
 	i : u64 mut;

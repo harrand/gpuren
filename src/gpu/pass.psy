@@ -345,7 +345,7 @@ impl_record_compute_work ::= func(passptr : pass_data_t mut?, frame_id : u64 -> 
 	return zero;
 };
 
-impl_record_graphics_work ::= func(passptr : pass_data_t mut?, options : pass_gpu_work_options mut?, frame_id : u64, long : arena mut?, short : arena mut? -> gpu_err)
+impl_record_graphics_work ::= func(passptr : pass_data_t mut?, options : pass_gpu_work_options mut?, frame_id : u64, long : arena mut? -> gpu_err)
 {
 	frame ::= deref(core.frames # frame_id);
 	pinfo ::= passptr->info;
@@ -361,8 +361,8 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, options : pass_gp
 		};
 	}
 
-	colour_attachments : VkRenderingAttachmentInfo mut? := arena_alloc(short, __sizeof(VkRenderingAttachmentInfo) * ccount);
-	colour_transitions : VkImageMemoryBarrier mut? := arena_alloc(short, __sizeof(VkImageMemoryBarrier) * ccount);
+	colour_attachments : VkRenderingAttachmentInfo mut? := __stack_push(ccount * __sizeof(VkRenderingAttachmentInfo)); 
+	colour_transitions : VkImageMemoryBarrier mut? := __stack_push(ccount * __sizeof(VkImageMemoryBarrier));
 	colour_transition_count : u64 mut := 0;
 
 	counter : u64 mut := 0;
@@ -615,7 +615,7 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, options : pass_gp
 	return zero;
 };
 
-impl_record_gpu_work ::= func(p : gpu_pass, options : pass_gpu_work_options mut?, frame_id : u64, long : arena mut?, short : arena mut? -> gpu_err)
+impl_record_gpu_work ::= func(p : gpu_pass, options : pass_gpu_work_options mut?, frame_id : u64, long : arena mut? -> gpu_err)
 {
 	passptr : pass_data_t mut? := pass.data # (p@s64);
 
@@ -628,7 +628,7 @@ impl_record_gpu_work ::= func(p : gpu_pass, options : pass_gpu_work_options mut?
 	}
 	else
 	{
-		ret = impl_record_graphics_work(passptr, options, frame_id, long, short);
+		ret = impl_record_graphics_work(passptr, options, frame_id, long);
 	}
 	impl_end_label(frame.cmds);
 	return ret;
