@@ -566,24 +566,40 @@ impl_wait_dependencies ::= func(g : graph_data_t mut?, idx : u64 -> v0)
 			}
 			else
 			{
-				deref(image_barriers # image_barrier_count) = VkImageMemoryBarrier
+				if(impl_resource_is_real(dependent_res.res))
 				{
-					.sType := 45;
-					.pNext := zero;
-					.srcAccessMask := dependent_res.src@s64@_;
-					.dstAccessMask := dependent_res.dst@s64@_;
-					//.oldLayout := // SHIT
-					//.newLayout := // SHIT
-					.srcQueueFamilyIndex := ~0;
-					.dstQueueFamilyIndex := ~0;
-				};
-				image_barrier_count = image_barrier_count + 1;
+					aspect : s32 mut := 0;
+					if(dependent_resptr->info.image_type == (gpu_image_type.depth))
+					{
+						aspect = 1;
+					}
+					deref(image_barriers # image_barrier_count) = VkImageMemoryBarrier
+					{
+						.sType := 45;
+						.pNext := zero;
+						.srcAccessMask := dependent_res.src@s64@_;
+						.dstAccessMask := dependent_res.dst@s64@_;
+						// note (synchronization2): If the synchronization2 feature is enabled, when the old and new layout are equal, the layout values are ignored - data is preserved no matter what values are specified, or what layout the image is currently in. 
+						// we enable synchronization 2 unconditionally (see hardware.psy).
+						.oldLayout := zero;
+						.newLayout := zero;
+						.srcQueueFamilyIndex := ~0;
+						.dstQueueFamilyIndex := ~0;
+						.image := dependent_resptr->vk_handle;
+						.subresourceRange := VkImageSubresourceRange
+						{
+							.aspectMask := aspect;
+							.baseMipLevel := 0;
+							.levelCount := 1;
+							.baseArrayLayer := 0;
+							.layerCount := 1;
+						};
+					};
+					image_barrier_count = image_barrier_count + 1;
+				}
 			}
 		}
 	}
-
-	// todo: fix image barriers
-	image_barrier_count = 0;
 
 	VK_PIPELINE_STAGE_ALL_COMMANDS_BIT ::= 0x00010000;
 	// do vulkan wait
