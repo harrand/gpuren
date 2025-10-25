@@ -1,0 +1,112 @@
+resource_access ::= enum
+{
+	.indirect_read := 0x00000001; // VK_ACCESS_INDIRECT_COMMAND_READ_BIT
+	.index_read := 0x00000002; // VK_ACCESS_INDEX_READ_BIT
+	.shader_read := 0x00000020; // VK_ACCESS_SHADER_READ_BIT
+	.shader_write := 0x00000040; // VK_ACCESS_SHADER_WRITE_BIT
+	.colour_target_read := 0x00000080; // VK_ACCESS_COLOR_ATTACHMENT_READ_BIT
+	.colour_target_write := 0x00000100; // VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+	.depth_target_read := 0x00000200; // VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT
+	.depth_target_write := 0x00000400; // VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
+	.transfer_read := 0x00000800; // VK_ACCESS_TRANSFER_READ_BIT
+	.transfer_write := 0x00001000; // VK_ACCESS_TRANSFER_WRITE_BIT
+};
+
+resource_dependency ::= struct
+{
+	res : gpu_resource;
+	src : resource_access;
+	dst : resource_access;
+};
+
+get_resource_access_from_pass ::= func(p : gpu_pass, r : gpu_resource -> resource_access)
+{
+	i : u64 mut;
+	ret : resource_access mut := zero;
+
+	passptr ::= pass.data # (p@s64);
+	passinfo ::= passptr->info;
+	is_compute ::= passptr->is_compute;
+	
+	if(is_compute)
+	{
+		compute ::= passinfo.compute;
+		if(compute.kernel_buffer == r)
+		{
+			ret = (ret | (resource_access.indirect_read));
+		}
+	}
+	else
+	{
+		graphics ::= passinfo.graphics;
+		for(i = 0, i < (graphics.colour_targets_count), i = i + 1)
+		{
+			col_target ::= deref(graphics.colour_targets_data # i);
+			if(col_target == r)
+			{
+				ret = (ret | (resource_access.colour_target_write));
+				ret = (ret | (resource_access.colour_target_read));
+			}
+		}
+		if(graphics.depth_target == r)
+		{
+			ret = (ret | (resource_access.depth_target_write));
+			ret = (ret | (resource_access.depth_target_read));
+		}
+		if(graphics.index_buffer == r)
+		{
+			ret = (ret | (resource_access.index_read));
+		}
+		if(graphics.draw_buffer == r)
+		{
+			ret = (ret | (resource_access.indirect_read));
+		}
+	}
+	for(i = 0, i < (passinfo.resources_count), i = i + 1)
+	{
+		cur_res ::= deref(passinfo.resources_data # i);
+		cur_resptr ::= resource.data # (cur_res@s64);
+		if(cur_res == r)
+		{
+			// buffer resources are read + write
+			// images are currently only read.
+			ret = (ret | (resource_access.shader_read));
+			if(cur_resptr->is_buffer)
+			{
+				ret = (ret | (resource_access.shader_write));
+			}
+		}
+	}
+	return ret;
+};
+
+get_resource_access_from_operation ::= func(o : gpu_operation, r : gpu_resource -> resource_access)
+{
+	ret : resource_access mut := zero;
+
+	opptr ::= operation.data # (o@s64);
+	opinfo ::= opptr->info;
+	if(opinfo.code == (gpu_operation_code.fill_buffer))
+	{
+		fill_buffer ::= opinfo.fill_buffer;
+		if(fill_buffer.dst == r)
+		{
+			ret = (ret | (resource_access.transfer_write));
+		}
+	}
+	if(opinfo.code == (gpu_operation_code.fill_image))
+	{
+		fill_image ::= opinfo.fill_image;
+		if(fill_image.dst == r)
+		{
+			ret = (ret | (resource_access.transfer_write));
+		}
+	}
+	return ret;
+};
+
+get_resource_access_from_graph ::= func(g : gpu_graph, r : gpu_resource -> resource_access)
+{
+	// todo: fill
+	return zero;
+};
