@@ -568,10 +568,10 @@ impl_wait_dependencies ::= func(g : graph_data_t mut?, idx : u64 -> v0)
 			{
 				if(impl_resource_is_real(dependent_res.res))
 				{
-					aspect : s32 mut := 0;
+					aspect : s32 mut := 1;
 					if(dependent_resptr->info.image_type == (gpu_image_type.depth))
 					{
-						aspect = 1;
+						aspect = 2;
 					}
 					deref(image_barriers # image_barrier_count) = VkImageMemoryBarrier
 					{
@@ -581,8 +581,10 @@ impl_wait_dependencies ::= func(g : graph_data_t mut?, idx : u64 -> v0)
 						.dstAccessMask := dependent_res.dst@s64@_;
 						// note (synchronization2): If the synchronization2 feature is enabled, when the old and new layout are equal, the layout values are ignored - data is preserved no matter what values are specified, or what layout the image is currently in. 
 						// we enable synchronization 2 unconditionally (see hardware.psy).
-						.oldLayout := zero;
-						.newLayout := zero;
+						// so in theory we could pass any values in here. however, from my exp. renderdoc does not respect this special rule, and if you simply pass 0 (undefined) it will think the images are undefined and not display things properly.
+						// i pass 8 (preinitialized) so renderdoc thinks the image data is untouched (which it is, because this sync2 rule ensures it)
+						.oldLayout := 0;
+						.newLayout := 0;
 						.srcQueueFamilyIndex := ~0;
 						.dstQueueFamilyIndex := ~0;
 						.image := dependent_resptr->vk_handle;
