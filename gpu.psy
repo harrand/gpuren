@@ -514,6 +514,7 @@ gpu_map_resource_result ::= struct
 
 gpu_image_type ::= enum
 {
+	.invalid := -1;
 	.rgba32 := 0;
 	.rgba64 := 1;
 	.rgba_float := 2;
