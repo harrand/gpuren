@@ -6,10 +6,10 @@
 ren_mesh_data ::= struct
 {
 	// array of u8?, each pointing to a memory blk of vertex size
-	vertices : u8 mut? weak;
 	vertices_count : u64;
-	indices : u32 mut?;
+	vertices : u8 mut? weak;
 	indices_count : u64;
+	indices : u32 mut?;
 };
 
 ren_mesh_handle ::= enum{};
