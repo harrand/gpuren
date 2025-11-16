@@ -351,8 +351,15 @@ gpu_dispatch_command ::= struct
 	kernel : u32[3];
 };
 
+gpu_primitive ::= enum
+{
+	.triangle := 0;
+	.point := 1;
+};
+
 gpu_graphics_state ::= struct
 {
+	primitive : gpu_primitive;
 	clear_colour : f32[4];
 	scissor : u32[4];
 	colour_targets_data : gpu_resource?;
@@ -361,7 +368,7 @@ gpu_graphics_state ::= struct
 	index_buffer : gpu_resource;
 	draw_buffer : gpu_resource;
 	culling : gpu_cull;
-	static_tri_count : u64;
+	static_prim_count : u64;
 };
 
 gpu_compute_state ::= struct

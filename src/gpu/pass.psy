@@ -576,14 +576,14 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, options : pass_gp
 	drawbufinfo : gpu_resource_info mut;
 	// todo: draw buffer logic.
 	// for now we just do the draw.
-	tri_count ::= ginfo.static_tri_count;
+	prim_count ::= ginfo.static_prim_count;
 	drawbuf ::= ginfo.draw_buffer;
 	idxbuf ::= ginfo.index_buffer;
 	if(idxbuf == (gpu_resource.invalid))
 	{
 		if(drawbuf == (gpu_resource.invalid))
 		{
-			vk.cmd_draw(frame.cmds, (tri_count * 3)@_, 1, 0, 0);
+			vk.cmd_draw(frame.cmds, (prim_count * impl_gpu_primitive_count_per_vertex(ginfo.primitive))@_, 1, 0, 0);
 		}
 		else
 		{
@@ -600,7 +600,7 @@ impl_record_graphics_work ::= func(passptr : pass_data_t mut?, options : pass_gp
 		vk.cmd_bind_index_buffer(frame.cmds, idxbufres->vk_handle, 0, 1);
 		if(drawbuf == (gpu_resource.invalid))
 		{
-			vk.cmd_draw_indexed(frame.cmds, (tri_count * 3)@_, 1, 0, 0, 0);
+			vk.cmd_draw_indexed(frame.cmds, (prim_count * impl_gpu_primitive_count_per_vertex(ginfo.primitive))@_, 1, 0, 0, 0);
 		}
 		else
 		{

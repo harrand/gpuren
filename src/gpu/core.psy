@@ -605,7 +605,7 @@ impl_create_graphics_pipeline ::= func(s : gpu_shader, graphics : gpu_graphics_s
 		.sType := 20;
 		.pNext := zero;
 		.flags := 0;
-		.topology := 3;
+		.topology := impl_gpu_primitive2vk_primitive_topology(graphics.primitive)@_;
 		.primitiveRestartEnable := 0;
 	};
 
@@ -614,7 +614,7 @@ impl_create_graphics_pipeline ::= func(s : gpu_shader, graphics : gpu_graphics_s
 		.sType := 21;
 		.pNext := zero;
 		.flags := 0;
-		.patchControlPoints := 3;
+		.patchControlPoints := impl_gpu_primitive_count_per_vertex(graphics.primitive)@_;
 	};
 
 	vwprt ::= VkPipelineViewportStateCreateInfo
@@ -869,4 +869,29 @@ impl_host_wait_event ::= func(event : u64, poll_interval_ms : u32 -> v0)
 impl_gpu_wait_all ::= func( -> v0)
 {
 	vk.device_wait_idle(hardware.used_device);
+};
+
+impl_gpu_primitive2vk_primitive_topology ::= func(prim : gpu_primitive -> u64)
+{
+	if(prim == (gpu_primitive.triangle))
+	{
+		return 3;
+	}
+	if(prim == (gpu_primitive.point))
+	{
+		return 0;
+	}
+	putzstr("invalid gpu_primitive ");
+	putzstr(__enumname(prim));
+	putzstr(" (");
+	putsint(prim@s64);
+	putzstr(")");
+	__debugbreak();
+	return -1;
+};
+
+impl_gpu_primitive_count_per_vertex ::= func(prim : gpu_primitive -> u64)
+{
+	arr ::= u64[2]{3; 1;};
+	return deref(arr # (prim@s64));
 };
