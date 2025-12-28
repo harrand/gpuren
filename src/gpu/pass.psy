@@ -260,6 +260,12 @@ impl_gpu_create_pass ::= func(info : gpu_pass_info, long : arena mut?, short : a
 	};
 };
 
+impl_gpu_pass_set_clear_colour ::= func(p : gpu_pass, new_clear_colour : f32[4] -> v0)
+{
+	passptr ::= pass.data # (p@s64);
+	passptr->info.graphics.clear_colour = new_clear_colour;
+};
+
 impl_alloc_new_pass ::= func(a : arena mut? -> pass_data_t mut?)
 {
 	if(pass.cap == 0)

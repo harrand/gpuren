@@ -262,6 +262,11 @@ gpu_resize_image ::= func(res : gpu_resource, new_dimensions : u32[2], long : ar
 	impl_gpu_resize_image(res, new_dimensions, long, short);
 };
 
+gpu_pass_set_clear_colour ::= func(p : gpu_pass, new_clear_colour : f32[4] -> v0)
+{
+	impl_gpu_pass_set_clear_colour(p, new_clear_colour);
+};
+
 // helper function that loads some .spv files from the file system
 // vertex_spv_path => relative path to a .spv for the vertex shader. must exist.
 // fragment_spv_path => relative path to a .spv for the fragment shader. must exist.
