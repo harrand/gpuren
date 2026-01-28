@@ -28,6 +28,9 @@ gpu_wnd : enum
 gpu_wnd_info : struct
 {
 	flags : gpu_wnd_flag;
+	width : u32;
+	height : u32;
+	title : u8?;
 };
 
 gpu_create_wnd : func(info : gpu_wnd_info -> gpu_wnd)

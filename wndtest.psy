@@ -6,5 +6,12 @@
 
 main : func(args : program_args? -> s32)
 {
+	wnd ::= gpu_create_wnd(gpu_wnd_info
+	{
+		.flags := zero;
+		.width := 800;
+		.height := 600;
+		.title := "wndtest";
+	});
 	return 0;
 };

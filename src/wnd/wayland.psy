@@ -17,7 +17,9 @@ static_if(_linux)
 	};
 
 	impl_wayland_functions_loaded : bool mut := false;
+	impl_wayland_display : wl_display mut? mut := zero;
 	wl_display_connect : func(name : u8? -> wl_display mut?) mut := zero;
+	wl_display_disconnect : func(display : wl_display mut? -> v0) := zero;
 	wl : v0? mut := zero;
 
 	dlopen : func(path : u8?, flags : s32 -> v0?) extern;
@@ -35,9 +37,11 @@ static_if(_linux)
 		RTLD_NOW ::= 0x00002;
 		wl = dlopen("/usr/lib/libwayland-client.so", RTLD_LAZY);
 		wl_display_connect = dlsym(wl, "wl_display_connect");
+		wl_display_disconnect = dlsym(wl, "wl_display_disconnect");
 	};
 
 	impl_wayland_create_display_if_necessary : func(-> v0)
 	{
+		impl_wayland_display = wl_display_connect(zero);
 	};
 }
