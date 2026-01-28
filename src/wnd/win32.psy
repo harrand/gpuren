@@ -1,4 +1,25 @@
-gpu_win32_create_wnd : func(info : gpu_wnd_info -> gpu_wnd)
+static_if(_win32)
 {
-	return zero;
-};
+	gpu_win32_create_wnd : func(info : gpu_wnd_info -> gpu_wnd)
+	{
+		impl_win32_register_wndclass_if_necessary();
+		// todo: rest of impl
+		return zero;
+	};
+
+	impl_win32_wndclass_is_registered : bool mut := false;
+	impl_win32_windows : impl_win32_window mut? mut := zero;
+	impl_win32_windows_count : u64 mut := 0;
+	impl_win32_windows_cap : u64 mut := 0;
+
+	impl_win32_register_wndclass_if_necessary : func(-> v0)
+	{
+		if(impl_win32_wndclass_is_registered)
+		{
+			return;
+		}
+		impl_win32_wndclass_is_registered = true;
+
+		// todo: wndclass bits
+	};
+}

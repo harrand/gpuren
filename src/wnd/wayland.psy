@@ -1,4 +1,43 @@
-gpu_wayland_create_wnd : func(info : gpu_wnd_info -> gpu_wnd)
+static_if(_linux)
 {
-	return zero;
-};
+	== default ==
+	{
+		message("hello");
+	};
+
+	gpu_wayland_create_wnd : func(info : gpu_wnd_info -> gpu_wnd)
+	{
+		impl_wayland_load_functions_if_necessary();
+		impl_wayland_create_display_if_necessary();
+		return zero;
+	};
+
+	wl_display : struct
+	{
+	};
+
+	impl_wayland_functions_loaded : bool mut := false;
+	wl_display_connect : func(name : u8? -> wl_display mut?) mut := zero;
+	wl : v0? mut := zero;
+
+	dlopen : func(path : u8?, flags : s32 -> v0?) extern;
+	dlsym : func(handle : v0?, symbol : u8? -> v0? weak) extern;
+
+	impl_wayland_load_functions_if_necessary : func(-> v0)
+	{
+		if(impl_wayland_functions_loaded)
+		{
+			return;
+		}
+		impl_wayland_functions_loaded = true;
+
+		RTLD_LAZY ::= 0x00001;
+		RTLD_NOW ::= 0x00002;
+		wl = dlopen("/usr/lib/libwayland-client.so", RTLD_LAZY);
+		wl_display_connect = dlsym(wl, "wl_display_connect");
+	};
+
+	impl_wayland_create_display_if_necessary : func(-> v0)
+	{
+	};
+}

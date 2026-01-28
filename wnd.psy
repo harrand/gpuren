@@ -1,6 +1,23 @@
 == default ==
 {
 	add_source_directory("src/wnd");
+	static_if(_win32)
+	{
+	}
+	else
+	{
+		message("yes");
+		add_link_library("-ldl -lc -dynamic-linker /lib64/ld-linux-x86-64.so.2");
+	}
+};
+
+gpu_wnd_flag : enum
+{
+	// when the window is created it fills the whole screen
+	.maximised := 1;
+	.transparent := 2;
+	.invisible := 3;
+	.bare := 4;
 };
 
 gpu_wnd : enum
@@ -10,6 +27,7 @@ gpu_wnd : enum
 
 gpu_wnd_info : struct
 {
+	flags : gpu_wnd_flag;
 };
 
 gpu_create_wnd : func(info : gpu_wnd_info -> gpu_wnd)
