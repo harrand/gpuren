@@ -16,10 +16,15 @@ static_if(_linux)
 	{
 	};
 
+	wl_registry : struct
+	{
+	};
+
 	impl_wayland_functions_loaded : bool mut := false;
 	impl_wayland_display : wl_display mut? mut := zero;
 	wl_display_connect : func(name : u8? -> wl_display mut?) mut := zero;
-	wl_display_disconnect : func(display : wl_display mut? -> v0) := zero;
+	wl_display_disconnect : func(display : wl_display mut? -> v0) mut := zero;
+	wl_display_get_registry : func(display : wl_display mut? -> wl_registry mut?) mut := zero;
 	wl : v0? mut := zero;
 
 	dlopen : func(path : u8?, flags : s32 -> v0?) extern;
@@ -38,6 +43,7 @@ static_if(_linux)
 		wl = dlopen("/usr/lib/libwayland-client.so", RTLD_LAZY);
 		wl_display_connect = dlsym(wl, "wl_display_connect");
 		wl_display_disconnect = dlsym(wl, "wl_display_disconnect");
+		wl_display_get_registry = dlsym(wl, "wl_display_get_registry");
 	};
 
 	impl_wayland_create_display_if_necessary : func(-> v0)
