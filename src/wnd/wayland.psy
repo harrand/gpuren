@@ -1,0 +1,4 @@
+gpu_wayland_create_wnd : func(info : gpu_wnd_info -> gpu_wnd)
+{
+	return zero;
+};

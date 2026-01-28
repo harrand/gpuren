@@ -1,0 +1,10 @@
+== default ==
+{
+	add_build_file("./wnd.psy");
+	executable("wndtest");
+};
+
+main : func(args : program_args? -> s32)
+{
+	return 0;
+};

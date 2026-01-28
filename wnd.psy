@@ -1,0 +1,22 @@
+== default ==
+{
+	add_source_directory("src/wnd");
+};
+
+gpu_wnd : enum
+{
+	.invalid := 1;
+};
+
+gpu_wnd_info : struct
+{
+};
+
+gpu_create_wnd : func(info : gpu_wnd_info -> gpu_wnd)
+{
+	static_if(_win32)
+	{
+		return gpu_win32_create_wnd(info);
+	}
+	return gpu_wayland_create_wnd(info);
+};
