@@ -1,6 +1,7 @@
 == default ==
 {
 	add_build_file("./wnd.psy");
+	add_build_file("../psyc/src/stdlib/stdlib.psy");
 	executable("wndtest");
 };
 
