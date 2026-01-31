@@ -1,0 +1,104 @@
+gpu_x11_create_wnd : func(info : gpu_wnd_info -> gpu_wnd)
+{
+	if(!x11.initialised)
+	{
+		x11_initialise();
+	}
+	wnd ::= XCreateSimpleWindow(x11.display, RootWindow(x11.display, x11.screen), 10, 10, 200, 200, 1, 0x00000000, 0xffffffff);
+	XMapWindow(x11.display, wnd);
+	return wnd.v@s64@gpu_wnd;
+};
+
+gpu_x11_wnd_update : func(wnd : gpu_wnd -> v0)
+{
+	x11wnd ::= Window{.v := wnd@s64@u64;};
+	evt : XEvent mut;
+	XNextEvent(x11.display, ref evt);
+};
+
+x11_data : struct
+{
+	initialised : bool;
+	display : Display mut?;
+	screen : s32;
+	event : XEvent;
+};
+x11 : x11_data mut := zero;
+
+XOpenDisplay : func(display_name : u8? -> Display mut?) extern;
+DefaultScreen : func(display : Display mut? -> s32){return display->default_screen;};
+RootWindow : func(display : Display mut?, screen : s32 -> Window){return (display->screens # screen)->root;};
+XCreateSimpleWindow : func(display : Display mut?, parent : Window, x : s32, y : s32, width : u32, height : u32, border_width : u32, border : u64, background : u64 -> Window) extern;
+XMapWindow : func(display : Display mut?, window : Window -> v0) extern;
+XNextEvent : func(display : Display mut?, evt : XEvent mut? -> v0) extern;
+XCloseDisplay : func(display : Display mut? -> v0) extern;
+XFlush : func(display : Display mut? -> v0) extern;
+
+x11_initialise : func(-> v0)
+{
+	x11.initialised = true;
+	x11.display = XOpenDisplay(zero);
+	x11.screen = DefaultScreen(x11.display);
+};
+
+Display : struct
+{
+	ext_data : v0 mut?;
+	free_funcs : v0? mut;
+	fd : s32;
+	conn_checker : s32;
+	proto_major_version : s32;
+	proto_minor_version : s32;
+	vendor : u8?;
+	resource_base : u64;
+	resource_mask : u64;
+	resource_id : u64;
+	resource_shift : s32;
+	resource_alloc : func(display : Display? -> u64);
+	byte_order : s32;
+	bitmap_unit : s32;
+	bitmap_pad : s32;
+	bitmap_bit_order : s32;
+	nformats : s32;
+	pixmap_format : v0?;
+	vnumber : s32;
+	release : s32;
+	head : v0?;
+	tail : v0?;
+	qlen : s32;
+	last_request_read : u64;
+	request : u64;
+	last_req : u8?;
+	buffer : u8?;
+	bufptr : u8?;
+	bufmax : u8?;
+	max_request_size : u32;
+	db : v0?;
+	synchandler : func(display : Display? -> s32);
+	display_name : u8?;
+	default_screen : s32;
+	nscreens : s32;
+	screens : Screen?;
+	// plenty more...
+};
+
+Window : struct
+{
+	// its a typedef for XID
+	v : u64;
+};
+
+Screen : struct
+{
+	prelude : u8[16];
+	root : Window;
+	rest : u8[104];
+	// plenty more...
+};
+
+XEvent : struct
+{
+	type : s32;
+	rest : u8[192 - 4];
+};
+

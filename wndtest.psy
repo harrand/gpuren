@@ -14,5 +14,9 @@ main : func(args : program_args? -> s32)
 		.height := 600;
 		.title := "wndtest";
 	});
+	while(true)
+	{
+		gpu_wnd_update(wnd);
+	}
 	return 0;
 };
