@@ -1,0 +1,17 @@
+static_if(_linux)
+{
+	gpu_wayland_create_wnd : func(info : gpu_wnd_info -> gpu_wnd)
+	{
+		if(!wl.initialised)
+		{
+			gpuren_wl_initialise();
+		}
+		if(wl.display == zero)
+		{
+			gpuren_wl_display_setup();
+		}
+
+		surface ::= wl_compositor_create_surface(wl.compositor);
+		return zero;
+	};
+}

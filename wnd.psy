@@ -11,6 +11,12 @@
 	}
 };
 
+static_if(_linux)
+{
+	dlopen : func(path : u8?, flags : s32 -> v0?) extern;
+	dlsym : func(handle : v0?, symbol : u8? -> v0? weak) extern;
+}
+
 gpu_wnd_flag : enum
 {
 	// when the window is created it fills the whole screen
