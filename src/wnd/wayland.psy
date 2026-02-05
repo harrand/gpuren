@@ -1,0 +1,88 @@
+_zstr_indexof_eq : func(zstr : u8? -> u64)
+{
+	chr : u8? mut := zstr;
+	i : u64 mut := 0;
+	while([chr] != zero)
+	{
+		if([chr] == '=')
+		{
+			return i;
+		}
+		chr = chr # 1;
+		i = i + 1;
+	}
+	return -1;
+};
+
+_getenv : func(envp : u8??, key : u8?, key_len : u64 -> u8?)
+{
+	env : u8?? mut := envp;
+	while([env] != zero)
+	{
+		str ::= [env];
+		eqpos ::= _zstr_indexof_eq(str);
+		if(eqpos == -1)
+		{
+			// malformed, skip
+		}
+		else
+		{
+			curkey ::= str;
+			curkey_len ::= eqpos;
+			value ::= str # (eqpos + 1);
+			if(key_len == curkey_len)
+			{
+				if(streql_n(curkey, key, key_len))
+				{
+					return value;
+				}
+			}
+		}
+		env = env # 1;
+	}
+	return zero;
+};
+
+wl_socket : s32 mut := -1;
+
+wl_open_socket : func(envp : u8?? -> v0)
+{
+	if(wl_socket != -1)
+	{
+		// already opened it
+		return;
+	}
+	// get $XDG_RUNTIME_DIR
+	xdg_runtime_dir_env ::= "XDG_RUNTIME_DIR";
+	xdg_runtime_dir ::= _getenv(envp, xdg_runtime_dir_env, zstrlen(xdg_runtime_dir_env));
+	xdg_runtime_dirlen ::= zstrlen(xdg_runtime_dir);
+	// append $WAYLAND_DISPLAY
+	wayland_display_env ::= "WAYLAND_DISPLAY";
+	wayland_display ::= _getenv(envp, wayland_display_env, zstrlen(wayland_display_env));
+	wayland_displaylen ::= zstrlen(wayland_display);
+
+	file_strlen ::= zstrlen(xdg_runtime_dir) + 1 + zstrlen(wayland_display) + 1;
+	// file_str = $XDG_RUNTIME_DIR / $WAYLAND_DISPLAY \0
+	// we assume the full path fits on the stack...
+	file_str : u8 mut? := alloca(file_strlen);
+	memcopy(file_str # 0, xdg_runtime_dir, xdg_runtime_dirlen);
+	[file_str # xdg_runtime_dirlen] = '/';
+	memcopy(file_str # (xdg_runtime_dirlen + 1), wayland_display, wayland_displaylen);
+	[file_str # (file_strlen - 1)] = zero;
+	
+	AF_UNIX ::= 1;
+	SOCK_STREAM ::= 1;
+	wl_socket = socket(AF_UNIX, SOCK_STREAM, zero);
+	addr ::= sockaddr_unix mut
+	{
+		.sun_family := AF_UNIX;
+	};
+	memcopy(addr.sun_path # 0, file_str, file_strlen);
+	connect(wl_socket, ref addr, sizeof sockaddr_unix);
+};
+
+wl_close_socket : func(-> v0)
+{
+	close(wl_socket);
+	wl_socket = -1;
+};

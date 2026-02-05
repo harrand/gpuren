@@ -1,0 +1,57 @@
+sockaddr_unix : struct
+{
+	sun_family : u16;
+	sun_path : u8[108];
+};
+
+socket : func(domain : s32, type : s32, protocol : s32 -> s32)
+{
+	return _syscall3(41, domain, type, protocol);
+};
+
+// note: clashes with psystdlib which wndtest currently uses
+//close : func(fd : s32 -> s32)
+//{
+//	return _syscall1(3, fd);
+//};
+
+connect : func(sockfd : s32, addr : sockaddr_unix?, addrlen : s32 -> s32)
+{
+	return _syscall3(42, sockfd, addr@u64, addrlen);
+};
+
+_syscall0 : asm("={rax},0,~{rcx},~{r11},~{memory}" -> u64 weak)
+{
+	syscall
+};
+
+_syscall1 : asm("={rax},0,{rdi},~{rcx},~{r11},~{memory}" -> u64 weak)
+{
+	syscall
+};
+
+_syscall2 : asm("={rax},0,{rdi},{rsi},~{rcx},~{r11},~{memory}" -> u64 weak)
+{
+	syscall
+};
+
+_syscall3 : asm("={rax},0,{rdi},{rsi},{rdx},~{rcx},~{r11},~{memory}" -> u64 weak)
+{
+	syscall
+};
+
+_syscall4 : asm("={rax},0,{rdi},{rsi},{rdx},{r10},~{rcx},~{r11},~{memory}" -> u64 weak)
+{
+	syscall
+};
+
+_syscall5 : asm("={rax},0,{rdi},{rsi},{rdx},{r10},{r8},~{rcx},~{r11},~{memory}" -> u64 weak)
+{
+	syscall
+};
+
+_syscall6 : asm("={rax},0,{rdi},{rsi},{rdx},{r10},{r8},{r9},~{rcx},~{r11},~{memory}" -> u64 weak)
+{
+	syscall
+};
+

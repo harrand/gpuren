@@ -7,6 +7,7 @@
 
 main : func(args : program_args? -> s32)
 {
+	wl_open_socket(args->envp);
 	wnd ::= gpu_create_wnd(gpu_wnd_info
 	{
 		.flags := zero;
